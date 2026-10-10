@@ -10,6 +10,8 @@ Do not start until `docs/decisions/phase-0-model-choice.md` exists and names `st
 
 The amount path is always `normalizeAmount` from Phase 0. Port that function and `resolveDate` into the app by reading the playground sources on disk and keeping the same results on the Phase 0 table. The unit table in the Phase 0 plan is the spec if the playground files are missing. `playground/src/amount.js` stays the Phase 0 copy. Do not add a third copy for the eval script.
 
+`playground/browser/` already runs live PCM capture, Whisper, `normalizeAmount`, `resolveDate`, and the interpreter JSON retry, and prints `{ transcript, amount, currency, category, merchant, date }`. Phase 1 ports that pipeline into `web/src/lib/` (amount, dates, interpret, audio worklet). Do not import the playground HTML. The playground click-toggle and 3000 ms silence window stay Phase 0 only.
+
 Repository layout this phase introduces: `web/` is the Vite + React static SPA, Node.js 22. `playground/` stays gitignored and keeps the golden audio. Product name stays open; the npm package name is `pasak-web`, matching the repo folder. No charts, no export, no login, no multi-device, no server inference. IndexedDB version `1` has only the `expenses` store. Do not create `meta`; Phase 2 adds it with a version bump.
 
 Files:
@@ -72,7 +74,7 @@ Transformers.js must not phone a CDN. Set `allowRemoteModels` false and `allowLo
 
 The date control shows the stored ISO date. When the stored value is `null`, it shows the local today with an unconfirmed state, and that display is not a form edit. Saving does not copy the displayed today into `prediction` or `correction`. A user who wants today stored changes the date control; that ISO date is written only into `correction`.
 
-Push-to-talk uses an `AudioWorklet` that captures PCM. Do not use `MediaRecorder` or `webm`. Pointer down starts. Pointer up stops. After speech has started (RMS above `0.015` for `200` ms), RMS below `0.01` for `800` ms stops. Hard stop at `20000` ms. Ignore clips shorter than `400` ms: show a short message and insert nothing. Resample the capture rate to 16 kHz mono, then call `transcribeThenExtract`. Constants live in `web/src/lib/audio.ts`.
+Push-to-talk uses an `AudioWorklet` that captures PCM. Do not use `MediaRecorder` or `webm`. Pointer down starts. Pointer up stops. After speech has started (RMS above `0.015` for `200` ms), RMS below `0.01` for `800` ms stops. Hard stop at `20000` ms. Ignore clips shorter than `400` ms: show a short message and insert nothing. Resample the capture rate to 16 kHz mono, then call `transcribeThenExtract`. Constants live in `web/src/lib/audio.ts`. Playground's click-toggle and 3000 ms silence are Phase 0 only; do not copy them here.
 
 UI, one page: a record button, a progress element bound to model-download `loaded/total` (indeterminate plus loaded bytes when `Content-Length` is absent), the latest transcript and fields as editable inputs, save, and a list of past records. Opening a past record shows prediction and correction fields. The list shows the correction when present, otherwise the prediction. A null date uses the same unconfirmed-today label in the list. The amount field accepts digits only (an integer `>= 0`, no separators). Empty amount or empty currency shows an inline error and save is disabled. A null amount from the pipeline does not insert a row until the user fills amount and currency and saves.
 

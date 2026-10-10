@@ -54,9 +54,9 @@ Each phase has an exit condition. A phase is done when its exit condition holds,
 
 Answer the risky questions before building around them.
 
-- Transcribe short Indonesian clips with Transformers.js from a Node script in `playground/` (gitignored), loading the local model folder. Confirm Indonesian is set at call time, because the stock config's `forced_decoder_ids` pin English. A browser load of that same bundle, and latency plus memory on a mid-range phone, come after the script and are required before this phase's exit is claimed.
+- Transcribe short Indonesian clips with Transformers.js from a Node script in `playground/` (gitignored), loading the local model folder. Confirm Indonesian is set at call time, because the stock config's `forced_decoder_ids` pin English. After the script, a localhost static page in `playground/browser/` loads that same bundle, records 16 kHz PCM by click-to-talk, runs the same extract rules, and prints expense JSON. Latency and memory from a mid-range phone (`phone.json`) are required before this phase's exit is claimed.
 - Benchmark tiny, base and small, and stock versus community Indonesian fine-tunes, on the same recordings, from that script.
-- Compare Qwen3-0.6B and Gemma 3 270M on Indonesian expense transcripts, first from a prompt alone and then after a small fine-tune, against a rules-only baseline. Keep Llama 3.2 1B as a reference point. The script records valid-JSON rate, amount accuracy and download size. Phone memory and latency are part of the browser follow-up.
+- Compare Qwen3-0.6B and Gemma 3 270M on Indonesian expense transcripts, first from a prompt alone and then after a small fine-tune, against a rules-only baseline. Keep Llama 3.2 1B as a reference point. The script records valid-JSON rate, amount accuracy and download size. Phone memory and latency come from the live browser page, not a canned WAV.
 - Build golden set v0 in `playground/golden/v0/` (gitignored): 50 to 100 spoken expense phrases, each with audio, a reference transcript, a `clear` or `hard` slice tag, and the correct structured result.
 
 Amount accuracy, measured here and gated in Phase 1: exact integer rupiah after normalization. Unspoken currency counts as IDR. A number that is a date or a quantity does not count as the amount. The clear slice must reach at least 98 percent and the overall set at least 90 percent before Phase 1 can exit. The hard slice is reported and does not gate. Phase 0 records the rates and does not apply the gate.
@@ -65,7 +65,7 @@ Exit: we know which STT and interpreter models are viable for Indonesian, and th
 
 ### Phase 1: Local MVP (no backend)
 
-- Push-to-talk capture, silence detection, Whisper, amount normalizer, interpreter, IndexedDB.
+- Push-to-talk capture, silence detection, Whisper, amount normalizer, interpreter, IndexedDB. Playground already proves live extract; this phase is the Vite SPA around it (hold-to-talk, correction, offline).
 - A correction interface that stores the original prediction beside the correction.
 - Works offline after the first load, with real download progress on the first one.
 
