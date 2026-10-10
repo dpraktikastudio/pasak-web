@@ -1,6 +1,6 @@
 # Constitution
 
-Last updated: 2026-10-10. Status: draft v0.2. Items marked **[OPEN]** are undecided. Items marked **[VERIFY]** are external facts to re-check before relying on them.
+Last updated: 2026-10-10. Status: draft v0.3. Items marked **[OPEN]** are undecided. Items marked **[VERIFY]** are external facts to re-check before relying on them.
 
 This document is the source of truth for what the project is, what it is built with, and where it is going. When another document or the blog series disagrees with this one, this one wins, and the other is corrected.
 
@@ -54,10 +54,12 @@ Each phase has an exit condition. A phase is done when its exit condition holds,
 
 Answer the risky questions before building around them.
 
-- Load `whisper-base` in the browser from our own host and transcribe a short Indonesian clip. Confirm the language setting works and the file URLs match the bucket layout.
-- Benchmark tiny, base and small, and stock versus community Indonesian fine-tunes, on the same recordings.
-- Compare Qwen3-0.6B and Gemma 3 270M on Indonesian expense transcripts, first from a prompt alone and then after a small fine-tune, against a rules-only baseline. Keep Llama 3.2 1B as a reference point. Record valid-JSON rate, amount accuracy, download size, memory and latency on a mid-range phone.
-- Build golden set v0: 50 to 100 spoken expense phrases with the correct structured result.
+- Transcribe short Indonesian clips with Transformers.js from a Node script in `playground/` (gitignored), loading the local model folder. Confirm Indonesian is set at call time, because the stock config's `forced_decoder_ids` pin English. A browser load of that same bundle, and latency plus memory on a mid-range phone, come after the script and are required before this phase's exit is claimed.
+- Benchmark tiny, base and small, and stock versus community Indonesian fine-tunes, on the same recordings, from that script.
+- Compare Qwen3-0.6B and Gemma 3 270M on Indonesian expense transcripts, first from a prompt alone and then after a small fine-tune, against a rules-only baseline. Keep Llama 3.2 1B as a reference point. The script records valid-JSON rate, amount accuracy and download size. Phone memory and latency are part of the browser follow-up.
+- Build golden set v0 in `playground/golden/v0/` (gitignored): 50 to 100 spoken expense phrases, each with audio, a reference transcript, a `clear` or `hard` slice tag, and the correct structured result.
+
+Amount accuracy, measured here and gated in Phase 1: exact integer rupiah after normalization. Unspoken currency counts as IDR. A number that is a date or a quantity does not count as the amount. The clear slice must reach at least 98 percent and the overall set at least 90 percent before Phase 1 can exit. The hard slice is reported and does not gate. Phase 0 records the rates and does not apply the gate.
 
 Exit: we know which STT and interpreter models are viable for Indonesian, and the golden set exists.
 
@@ -67,7 +69,7 @@ Exit: we know which STT and interpreter models are viable for Indonesian, and th
 - A correction interface that stores the original prediction beside the correction.
 - Works offline after the first load, with real download progress on the first one.
 
-Exit: a person can record, review and correct expenses entirely on their device, and amount accuracy on the golden set meets the threshold **[OPEN: threshold]**.
+Exit: a person can record, review and correct expenses entirely on their device, and amount accuracy on golden set v0 meets the gate: at least 98 percent on the clear slice and at least 90 percent overall. The hard slice is reported and does not gate.
 
 ### Phase 2: Model delivery
 
@@ -103,7 +105,7 @@ Ideas that are not committed: more languages, multi-device sync, an opt-in serve
 - Interpreter model: Qwen3-0.6B or Gemma 3 270M, decided by the Phase 0 comparison. Also whether the model is needed at all beyond a rules-based parser, and the licensing terms for redistributing fine-tuned Gemma weights from our own CDN **[VERIFY]**.
 - Promotion: human approval or automatic after a passing eval.
 - Model path layout: override Transformers.js's path template, or mirror the Hugging Face URL shape in R2.
-- Amount accuracy threshold, retention period, and scrubbing rules.
+- Retention period and scrubbing rules. Amount accuracy is decided: see Phase 0 and the Phase 1 exit.
 - Project name and repository layout.
 
 ## Amendments
