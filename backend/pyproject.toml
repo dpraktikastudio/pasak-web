@@ -8,6 +8,8 @@ version = "0.1.0"
 dependencies = [
     "fastapi",
     "uvicorn",
+    "python-multipart",
+    "httpx",
     "pytest",
     "ruff",
 ]
