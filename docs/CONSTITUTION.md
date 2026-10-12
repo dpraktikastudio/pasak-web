@@ -58,12 +58,15 @@ Answer the risky questions before building around them.
 - Benchmark tiny, base and small, and stock versus community Indonesian fine-tunes, on the same recordings, from that script.
 - Compare Qwen3-0.6B and Gemma 3 270M on Indonesian expense transcripts, first from a prompt alone and then after a small fine-tune, against a rules-only baseline. Keep Llama 3.2 1B as a reference point. The script records valid-JSON rate, amount accuracy and download size. Phone memory and latency come from the live browser page, not a canned WAV.
 - Build golden set v0 in `playground/golden/v0/` (gitignored): 50 to 100 spoken expense phrases, each with audio, a reference transcript, a `clear` or `hard` slice tag, and the correct structured result.
+- Phase 0 may add `backend/` for maintainer Whisper-small fine-tune (Colab GPU, local collect). That tree is not a product backend. Colab audio upload is maintainer training, not product sync; principle 3 still governs shipped sync.
 
 Amount accuracy, measured here and gated in Phase 1: exact integer rupiah after normalization. Unspoken currency counts as IDR. A number that is a date or a quantity does not count as the amount. The clear slice must reach at least 98 percent and the overall set at least 90 percent before Phase 1 can exit. The hard slice is reported and does not gate. Phase 0 records the rates and does not apply the gate.
 
 Exit: we know which STT and interpreter models are viable for Indonesian, and the golden set exists.
 
 ### Phase 1: Local MVP (no backend)
+
+Phase 1 remains no product backend and no server inference. Maintainer `backend/` from Phase 0 does not count as one.
 
 - Push-to-talk capture, silence detection, Whisper, amount normalizer, interpreter, IndexedDB. Playground already proves live extract; this phase is the Vite SPA around it (hold-to-talk, correction, offline).
 - A correction interface that stores the original prediction beside the correction.
@@ -98,7 +101,7 @@ Exit: the loop runs without manual steps except approval, and a deletion request
 
 ### Later
 
-Ideas that are not committed: more languages, multi-device sync, an opt-in server inference fallback for devices without WebGPU, Whisper fine-tuning from voluntarily contributed voice samples, and smaller edge-focused speech models.
+Ideas that are not committed: more languages, multi-device sync, an opt-in server inference fallback for devices without WebGPU, Whisper fine-tuning from voluntarily contributed voice samples, and smaller edge-focused speech models. Maintainer training in `backend/` does not commit that volunteered-samples product idea.
 
 ## Open decisions
 

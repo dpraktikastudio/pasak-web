@@ -1,2 +1,10 @@
 models/
 playground/
+backend/data/
+backend/.cache/
+backend/results/
+backend/.venv/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.egg-info/

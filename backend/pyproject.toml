@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pasak"
+version = "0.1.0"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pytest",
+    "ruff",
+]
+
+[project.optional-dependencies]
+ml = [
+    "transformers",
+    "torch",
+    "accelerate",
+    "datasets",
+    "optimum[onnxruntime]",
+    "soundfile",
+    "jiwer",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
