@@ -8,3 +8,4 @@ backend/.venv/
 .ruff_cache/
 __pycache__/
 *.egg-info/
+secret/
