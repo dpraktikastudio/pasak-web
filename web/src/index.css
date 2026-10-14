@@ -1,0 +1,36 @@
+:root {
+  color-scheme: light;
+  color: #111;
+  background: #f6f6f4;
+  font-family: system-ui, sans-serif;
+  line-height: 1.4;
+}
+
+body {
+  margin: 1.5rem;
+  max-width: 40rem;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+label {
+  display: block;
+  margin: 0.6rem 0;
+}
+
+textarea,
+input,
+select {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+ul {
+  padding-left: 1rem;
+}

@@ -1,0 +1,30 @@
+{
+  "name": "pasak-web",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "*",
+    "onnxruntime-web": "*",
+    "react": "*",
+    "react-dom": "*"
+  },
+  "devDependencies": {
+    "@types/react": "*",
+    "@types/react-dom": "*",
+    "@vitejs/plugin-react": "*",
+    "fake-indexeddb": "*",
+    "typescript": "*",
+    "vite": "*",
+    "vite-node": "*",
+    "vitest": "*"
+  }
+}
