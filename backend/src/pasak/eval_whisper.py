@@ -70,9 +70,10 @@ def _has_weights(ckpt: Path) -> bool:
     return (ckpt / "model.safetensors").is_file() or (ckpt / "pytorch_model.bin").is_file()
 
 
-def _transcribe(torch, processor, model, wav_path: Path) -> str:
+def _transcribe(torch, processor, model, wav_path: Path, device) -> str:
     audio = _read_wav_f32(wav_path)
     inputs = processor(audio, sampling_rate=16000, return_tensors="pt")
+    inputs = {key: value.to(device) for key, value in inputs.items()}
     with torch.no_grad():
         try:
             ids = model.generate(**inputs, language="indonesian", task="transcribe")
@@ -209,15 +210,24 @@ def _eval(args, test_rows) -> int:
         return 2
     ft_proc, ft_model = _load_model(transformers, torch, str(ckpt), cache)
     stock_proc, stock_model = _load_model(transformers, torch, STOCK_ID, cache)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    ft_model.to(device)
+    stock_model.to(device)
+    print(f"eval_device={device}", file=sys.stderr, flush=True)
     refs = []
     hyps_ft = []
     hyps_stock = []
     ids = []
-    for row in test_rows:
+    n_test = len(test_rows)
+    for i, row in enumerate(test_rows, 1):
         ids.append(row["id"])
         refs.append(row["transcript"])
-        hyps_ft.append(_transcribe(torch, ft_proc, ft_model, row["wav_path"]))
-        hyps_stock.append(_transcribe(torch, stock_proc, stock_model, row["wav_path"]))
+        hyps_ft.append(_transcribe(torch, ft_proc, ft_model, row["wav_path"], device))
+        hyps_stock.append(
+            _transcribe(torch, stock_proc, stock_model, row["wav_path"], device)
+        )
+        if i == 1 or i % 50 == 0 or i == n_test:
+            print(f"eval_progress={i}/{n_test}", file=sys.stderr, flush=True)
     wer_ft = float(jiwer.wer(refs, hyps_ft))
     wer_stock = float(jiwer.wer(refs, hyps_stock))
     print(f"werFt={wer_ft} werStock={wer_stock}", flush=True)
@@ -232,8 +242,8 @@ def _eval(args, test_rows) -> int:
     else:
         def transcribe_pair(wav_path):
             return (
-                _transcribe(torch, ft_proc, ft_model, wav_path),
-                _transcribe(torch, stock_proc, stock_model, wav_path),
+                _transcribe(torch, ft_proc, ft_model, wav_path, device),
+                _transcribe(torch, stock_proc, stock_model, wav_path, device),
             )
 
         try:

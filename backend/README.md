@@ -2,6 +2,8 @@
 
 Collect expense golden locally and fine-tune `openai/whisper-small` on Colab. This is not a product API. Phase 2 still ships under `server/`.
 
+Bench (2026-10-14): FLEURS `id_id` test WER stock 36.1% → FLEURS-only FT 17.2% → FLEURS+golden FT 14.4%. Amounts on a 20-line golden holdout 17/20 → 19/20 for the golden mix. Write-up: `docs/reports/2026-10-14-whisper-small-finetune.md`.
+
 Package name `pasak` is the same as later `server/src/pasak`. Do not `pip install -e` this tree and `server/` in one env.
 
 ## Local collect

@@ -1,5 +1,6 @@
 import argparse
 import csv
+import io
 import json
 import os
 import struct
@@ -63,15 +64,19 @@ def _wav_to_pcm16_mono_16k(path: Path) -> bytes:
     return _clamp_pcm16(_resample(samples, rate))
 
 
+def _soundfile_array_to_pcm16(array, rate: int) -> bytes:
+    mono = [float(sum(frame) / len(frame)) for frame in array]
+    samples = [round(x * 32767.0) for x in mono]
+    return _clamp_pcm16(_resample(samples, rate))
+
+
 def _load_other_audio(path: Path) -> bytes:
     try:
         import soundfile as sf
     except ImportError as exc:
         raise ValueError(f"cannot decode {path}; soundfile is required") from exc
     array, rate = sf.read(str(path), always_2d=True)
-    mono = [float(sum(frame) / len(frame)) for frame in array]
-    samples = [round(x * 32767.0) for x in mono]
-    return _clamp_pcm16(_resample(samples, rate))
+    return _soundfile_array_to_pcm16(array, rate)
 
 
 def convert_to_pcm16_mono_16k(src: Path, dest: Path) -> None:
@@ -80,6 +85,34 @@ def convert_to_pcm16_mono_16k(src: Path, dest: Path) -> None:
     except (wave.Error, struct.error, ValueError):
         pcm = _load_other_audio(src)
     write_pcm16_mono_16k(dest, pcm)
+
+
+def hf_encoded_audio_to_pcm16(audio) -> bytes:
+    """Decode Hub Audio(decode=False) with soundfile. Avoids torchcodec/FFmpeg."""
+    if not isinstance(audio, dict):
+        raise TypeError("audio must be a dict")
+    array = audio.get("array")
+    if array is not None:
+        rate = audio.get("sampling_rate")
+        if rate is None:
+            raise ValueError("audio array missing sampling_rate")
+        return _float_to_pcm16(array, int(rate))
+    path = audio.get("path")
+    if path and Path(str(path)).is_file():
+        src = Path(path)
+        try:
+            return _wav_to_pcm16_mono_16k(src)
+        except (wave.Error, struct.error, ValueError):
+            return _load_other_audio(src)
+    blob = audio.get("bytes")
+    if blob:
+        try:
+            import soundfile as sf
+        except ImportError as exc:
+            raise ValueError("cannot decode audio bytes; soundfile is required") from exc
+        array, rate = sf.read(io.BytesIO(blob), always_2d=True)
+        return _soundfile_array_to_pcm16(array, rate)
+    raise ValueError("audio has no path, bytes, or array")
 
 
 def _write_manifest(root: Path, rows: list[dict]) -> None:
@@ -158,7 +191,7 @@ def _float_to_pcm16(array, rate: int) -> bytes:
 
 def _prepare_fleurs(root: Path, start: int) -> tuple[list[dict], int] | int:
     try:
-        from datasets import load_dataset
+        from datasets import Audio, load_dataset
     except ImportError:
         print("datasets is required for --fleurs", file=sys.stderr)
         return 2
@@ -169,6 +202,7 @@ def _prepare_fleurs(root: Path, start: int) -> tuple[list[dict], int] | int:
     for split in ("train", "test"):
         try:
             ds = load_dataset("google/fleurs", "id_id", split=split)
+            ds = ds.cast_column("audio", Audio(decode=False))
         except Exception as exc:  # noqa: BLE001
             msg = str(exc)
             if "trust_remote_code" in msg:
@@ -182,12 +216,11 @@ def _prepare_fleurs(root: Path, start: int) -> tuple[list[dict], int] | int:
             if not str(text).strip():
                 continue
             try:
-                audio = ex["audio"]
-                pcm = _float_to_pcm16(audio["array"], audio["sampling_rate"])
+                pcm = hf_encoded_audio_to_pcm16(ex["audio"])
                 eid = f"asr-{n:06d}"
                 audio_rel = f"audio/fleurs-{split}-{n:06d}.wav"
                 write_pcm16_mono_16k(root / audio_rel, pcm)
-            except (KeyError, TypeError, ValueError, OSError) as exc:
+            except (KeyError, TypeError, ValueError, OSError, RuntimeError) as exc:
                 print(exc, file=sys.stderr)
                 return 2
             rows.append(

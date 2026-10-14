@@ -9,3 +9,8 @@ backend/.venv/
 __pycache__/
 *.egg-info/
 secret/
+.env
+.env.*
+!.env.example
+*.safetensors
+*.onnx

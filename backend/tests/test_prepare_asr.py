@@ -2,8 +2,15 @@ import json
 import wave
 
 from pasak.golden import check_wav_header
+from pasak.prepare_asr import hf_encoded_audio_to_pcm16
 from pasak.prepare_asr import main as prepare_main
 from tests.conftest import write_pcm16_wav
+
+
+def test_hf_encoded_audio_path_is_pcm16(tmp_path):
+    wav = write_pcm16_wav(tmp_path / "clip.wav", n_samples=160)
+    pcm = hf_encoded_audio_to_pcm16({"path": str(wav), "bytes": None})
+    assert len(pcm) == 160 * 2
 
 
 def test_cv_dir_missing_tsv_exits_2(asr_tmp, tmp_path):
