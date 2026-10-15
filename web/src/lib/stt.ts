@@ -31,6 +31,7 @@ async function loadPipe(
   delivery: DeliveryLoad,
   onProgress?: (loaded: number, total?: number) => void,
 ): Promise<AsrPipe> {
+  assignEnv(delivery);
   const dtype = modelChoice.stt_dtype as "q8" | "q4" | "q4f16";
   const key = `${delivery.modelId}:${dtype}:${device}`;
   if (cached?.key === key) return cached.pipe;
@@ -42,7 +43,6 @@ async function loadPipe(
     }
     cached = null;
   }
-  assignEnv(delivery);
   const pipe = (await pipeline("automatic-speech-recognition", delivery.modelId, {
     dtype,
     device,

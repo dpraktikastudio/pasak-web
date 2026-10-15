@@ -83,4 +83,20 @@ describe("transcribePcm", () => {
     await transcribePcm(new Float32Array(16), 16000);
     expect(pipeline).toHaveBeenCalled();
   });
+
+  test("cached pipeline still restores delivery env after configureLocalOnnxEnv", async () => {
+    await putMeta("activeVersions", {
+      whisper: { version: "1.0.1", baseUrl: "https://models.example" },
+      interpreter: null,
+    });
+    await transcribePcm(new Float32Array(16), 16000);
+    pipeline.mockClear();
+    await transcribePcm(new Float32Array(16), 16000);
+    expect(pipeline).not.toHaveBeenCalled();
+    expect(env.allowRemoteModels).toBe(true);
+    expect(env.allowLocalModels).toBe(false);
+    expect(env.useBrowserCache).toBe(false);
+    expect(env.remoteHost).toBe("https://models.example");
+    expect(env.remotePathTemplate).toBe("models/{model}/");
+  });
 });

@@ -89,6 +89,7 @@ function assignEnv(delivery: DeliveryLoad): void {
 }
 
 async function loadPipe(device: InferenceDevice, delivery: DeliveryLoad): Promise<GenPipe> {
+  assignEnv(delivery);
   const dtype = modelChoice.interpreter_dtype as "q8" | "q4" | "q4f16";
   const key = `${delivery.modelId}:${dtype}:${device}`;
   if (cached?.key === key) return cached.pipe;
@@ -100,7 +101,6 @@ async function loadPipe(device: InferenceDevice, delivery: DeliveryLoad): Promis
     }
     cached = null;
   }
-  assignEnv(delivery);
   const pipe = (await pipeline("text-generation", delivery.modelId, {
     dtype,
     device,
