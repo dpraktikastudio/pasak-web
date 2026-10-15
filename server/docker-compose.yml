@@ -1,0 +1,9 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: pasak
+      POSTGRES_PASSWORD: pasak
+      POSTGRES_DB: pasak
+    ports:
+      - "5432:5432"
