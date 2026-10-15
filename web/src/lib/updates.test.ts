@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { getMeta, putMeta } from "./db";
-import { applyPendingVersions, checkForUpdates } from "./updates";
+import { env } from "@huggingface/transformers";
+import { applyPendingVersions, checkForUpdates, deliveryEnvFor, expenseModelVersions } from "./updates";
 import type { FamilyVersions } from "./updates";
 
 const BASE = "https://models.example";
@@ -245,5 +246,120 @@ describe("applyPendingVersions", () => {
     await applyPendingVersions();
 
     expect(await getMeta("activeVersions")).toEqual(before);
+  });
+});
+
+const phase1 = {
+  interpreter: "rules-only",
+  stt_dir: "models/whisper-base/spike",
+  interpreter_dir: "n/a",
+};
+
+const phase1Lm = {
+  interpreter: "qwen3-0.6b",
+  stt_dir: "models/whisper-base/spike",
+  interpreter_dir: "models/interpreter/0.2.0",
+};
+
+describe("deliveryEnvFor", () => {
+  const prevUseFS = env.useFS;
+  const prevLocal = env.localModelPath;
+
+  afterEach(() => {
+    env.useFS = prevUseFS;
+    env.localModelPath = prevLocal;
+  });
+
+  test("active whisper 1.0.1 uses remote flags, host, template, and model id", () => {
+    const d = deliveryEnvFor("whisper", { version: "1.0.1", baseUrl: "https://models.example" }, phase1);
+    expect(d).toEqual({
+      skip: false,
+      modelId: "whisper/1.0.1",
+      allowRemoteModels: true,
+      allowLocalModels: false,
+      useBrowserCache: false,
+      remoteHost: "https://models.example",
+      remotePathTemplate: "models/{model}/",
+    });
+  });
+
+  test("active null uses local flags; localModelPath /models/ only when useFS is off", () => {
+    env.useFS = false;
+    const off = deliveryEnvFor("whisper", null, phase1);
+    expect(off).toMatchObject({
+      skip: false,
+      modelId: "whisper-base/spike",
+      allowRemoteModels: false,
+      allowLocalModels: true,
+      localModelPath: "/models/",
+    });
+
+    env.useFS = true;
+    env.localModelPath = "/abs/models/";
+    const on = deliveryEnvFor("whisper", null, phase1);
+    expect(on).toMatchObject({
+      skip: false,
+      allowRemoteModels: false,
+      allowLocalModels: true,
+    });
+    expect("localModelPath" in on ? on.localModelPath : undefined).toBeUndefined();
+    expect(env.localModelPath).toBe("/abs/models/");
+  });
+
+  test("active interpreter uses interpreter/{version} and the same remote flags", () => {
+    const d = deliveryEnvFor("interpreter", { version: "0.3.0", baseUrl: "https://models.example/" }, phase1);
+    expect(d).toEqual({
+      skip: false,
+      modelId: "interpreter/0.3.0",
+      allowRemoteModels: true,
+      allowLocalModels: false,
+      useBrowserCache: false,
+      remoteHost: "https://models.example",
+      remotePathTemplate: "models/{model}/",
+    });
+  });
+
+  test("rules-only with null active skips", () => {
+    expect(deliveryEnvFor("interpreter", null, phase1)).toEqual({ skip: true });
+  });
+
+  test("null active interpreter that is not rules-only uses phase 1 local id", () => {
+    env.useFS = false;
+    const d = deliveryEnvFor("interpreter", null, phase1Lm);
+    expect(d).toMatchObject({
+      skip: false,
+      modelId: "interpreter/0.2.0",
+      allowRemoteModels: false,
+      allowLocalModels: true,
+      localModelPath: "/models/",
+    });
+  });
+
+  test("whisper/../x throws invalid model ID; whisper/1.0.1 does not", () => {
+    expect(() => deliveryEnvFor("whisper", { version: "../x", baseUrl: "https://models.example" }, phase1)).toThrow(
+      /invalid model ID/,
+    );
+    expect(() =>
+      deliveryEnvFor("whisper", { version: "1.0.1", baseUrl: "https://models.example" }, phase1),
+    ).not.toThrow();
+  });
+});
+
+describe("expenseModelVersions", () => {
+  test("active whisper and interpreter labels; null interpreter; null whisper is phase 1 stt_dir", () => {
+    expect(
+      expenseModelVersions(
+        { whisper: { version: "1.0.1", baseUrl: BASE }, interpreter: { version: "0.3.0", baseUrl: BASE } },
+        phase1,
+      ),
+    ).toEqual({ stt: "whisper@1.0.1", interpreter: "interpreter@0.3.0" });
+    expect(expenseModelVersions({ whisper: { version: "1.0.1", baseUrl: BASE }, interpreter: null }, phase1)).toEqual({
+      stt: "whisper@1.0.1",
+      interpreter: null,
+    });
+    expect(expenseModelVersions({ whisper: null, interpreter: null }, phase1)).toEqual({
+      stt: "whisper-base@spike",
+      interpreter: null,
+    });
   });
 });

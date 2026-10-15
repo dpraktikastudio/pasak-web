@@ -1,4 +1,6 @@
+import { env } from "@huggingface/transformers";
 import { getMeta, putMeta } from "./db";
+import { dirModelId, dirVersionLabel } from "./modelChoice";
 
 export type FamilyVersions = {
   whisper: { version: string; baseUrl: string } | null;
@@ -149,4 +151,82 @@ export async function applyPendingVersions(): Promise<void> {
     changed = true;
   }
   if (changed) await putMeta(ACTIVE, active);
+}
+
+const HF_MODEL_ID_RE = /^(\b[\w\-.]+\b\/)?\b[\w\-.]{1,96}\b$/;
+
+export type Phase1Dirs = {
+  interpreter: string;
+  stt_dir: string;
+  interpreter_dir: string;
+};
+
+export type DeliveryLoad = {
+  skip: false;
+  modelId: string;
+  allowRemoteModels: boolean;
+  allowLocalModels: boolean;
+  useBrowserCache?: boolean;
+  remoteHost?: string;
+  remotePathTemplate?: string;
+  localModelPath?: string;
+};
+
+export type DeliveryEnv = DeliveryLoad | { skip: true };
+
+export function isValidHfModelId(modelId: string): boolean {
+  if (modelId.includes("..") || modelId.includes("--")) return false;
+  if (modelId.endsWith(".git") || modelId.endsWith(".ipynb")) return false;
+  return HF_MODEL_ID_RE.test(modelId);
+}
+
+export function deliveryEnvFor(
+  family: Family,
+  active: { version: string; baseUrl: string } | null,
+  phase1: Phase1Dirs,
+): DeliveryEnv {
+  if (active == null) {
+    if (family === "interpreter" && phase1.interpreter === "rules-only") {
+      return { skip: true };
+    }
+    const local: DeliveryLoad = {
+      skip: false,
+      modelId: dirModelId(family === "whisper" ? phase1.stt_dir : phase1.interpreter_dir),
+      allowRemoteModels: false,
+      allowLocalModels: true,
+    };
+    if (!env.useFS) local.localModelPath = "/models/";
+    return local;
+  }
+  const modelId = `${family}/${active.version}`;
+  if (!isValidHfModelId(modelId)) throw new Error("invalid model ID");
+  return {
+    skip: false,
+    modelId,
+    allowRemoteModels: true,
+    allowLocalModels: false,
+    useBrowserCache: false,
+    remoteHost: active.baseUrl.replace(/\/+$/, ""),
+    remotePathTemplate: "models/{model}/",
+  };
+}
+
+export function expenseModelVersions(
+  active: FamilyVersions | null | undefined,
+  phase1: { stt_dir: string },
+): { stt: string; interpreter: string | null } {
+  return {
+    stt: active?.whisper ? `whisper@${active.whisper.version}` : dirVersionLabel(phase1.stt_dir),
+    interpreter: active?.interpreter ? `interpreter@${active.interpreter.version}` : null,
+  };
+}
+
+export async function getActiveVersions(): Promise<FamilyVersions> {
+  const stored = await readStored(ACTIVE);
+  return {
+    whisper: stored.whisper ? { version: stored.whisper.version, baseUrl: stored.whisper.baseUrl } : null,
+    interpreter: stored.interpreter
+      ? { version: stored.interpreter.version, baseUrl: stored.interpreter.baseUrl }
+      : null,
+  };
 }

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { startPushToTalk } from "./lib/audio";
 import { listExpenses, putExpense, saveCorrection } from "./lib/db";
 import { localTodayIso } from "./lib/dates";
-import { interpreterVersionLabel, sttVersionLabel } from "./lib/modelChoice";
+import { interpreterVersionLabel, modelChoice, sttVersionLabel } from "./lib/modelChoice";
+import { expenseModelVersions, getActiveVersions } from "./lib/updates";
 import type { Category, ExpenseFields, ExpenseRecord } from "./lib/types";
 
 const CATEGORIES: Category[] = ["food", "transport", "bills", "shopping", "health", "other"];
@@ -101,7 +102,7 @@ export function App() {
         transcript: result.transcript,
         prediction: result.prediction,
         correction: null,
-        modelVersions: { stt: sttVersionLabel, interpreter: interpreterVersionLabel },
+        modelVersions: expenseModelVersions(await getActiveVersions(), modelChoice),
       };
       setDraft(next);
       setSaved(false);

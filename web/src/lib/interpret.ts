@@ -1,14 +1,11 @@
-import { pipeline } from "@huggingface/transformers";
-import {
-  interpreterIsRulesOnly,
-  interpreterModelId,
-  modelChoice,
-} from "./modelChoice";
+import { env, pipeline } from "@huggingface/transformers";
+import { modelChoice } from "./modelChoice";
 import {
   configureLocalOnnxEnv,
   withInferenceDeviceFallback,
   type InferenceDevice,
 } from "./onnxEnv";
+import { deliveryEnvFor, getActiveVersions, type DeliveryLoad } from "./updates";
 
 type GenPipe = {
   (messages: { role: string; content: string }[], opts: Record<string, unknown>): Promise<unknown>;
@@ -82,10 +79,18 @@ async function recordThinkingFallback(): Promise<void> {
   }
 }
 
-async function loadPipe(device: InferenceDevice): Promise<GenPipe> {
-  if (!interpreterModelId) throw new Error("interpreter is rules-only");
+function assignEnv(delivery: DeliveryLoad): void {
+  env.allowRemoteModels = delivery.allowRemoteModels;
+  env.allowLocalModels = delivery.allowLocalModels;
+  if (delivery.useBrowserCache !== undefined) env.useBrowserCache = delivery.useBrowserCache;
+  if (delivery.remoteHost !== undefined) env.remoteHost = delivery.remoteHost;
+  if (delivery.remotePathTemplate !== undefined) env.remotePathTemplate = delivery.remotePathTemplate;
+  if (delivery.localModelPath !== undefined) env.localModelPath = delivery.localModelPath;
+}
+
+async function loadPipe(device: InferenceDevice, delivery: DeliveryLoad): Promise<GenPipe> {
   const dtype = modelChoice.interpreter_dtype as "q8" | "q4" | "q4f16";
-  const key = `${interpreterModelId}:${dtype}:${device}`;
+  const key = `${delivery.modelId}:${dtype}:${device}`;
   if (cached?.key === key) return cached.pipe;
   if (cached) {
     try {
@@ -95,7 +100,8 @@ async function loadPipe(device: InferenceDevice): Promise<GenPipe> {
     }
     cached = null;
   }
-  const pipe = (await pipeline("text-generation", interpreterModelId, {
+  assignEnv(delivery);
+  const pipe = (await pipeline("text-generation", delivery.modelId, {
     dtype,
     device,
   })) as unknown as GenPipe;
@@ -104,11 +110,13 @@ async function loadPipe(device: InferenceDevice): Promise<GenPipe> {
 }
 
 export async function completeInterpreter(transcript: string, repairError?: string): Promise<string> {
-  if (interpreterIsRulesOnly || !interpreterModelId) {
+  const active = await getActiveVersions();
+  const delivery = deliveryEnvFor("interpreter", active.interpreter, modelChoice);
+  if (delivery.skip) {
     throw new Error("interpreter is rules-only");
   }
   configureLocalOnnxEnv();
-  const pipe = await withInferenceDeviceFallback(loadPipe);
+  const pipe = await withInferenceDeviceFallback((device) => loadPipe(device, delivery));
 
   const extra = repairError ? repairError : undefined;
   const opts: Record<string, unknown> = { max_new_tokens: 256, do_sample: false };

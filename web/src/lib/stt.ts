@@ -1,10 +1,11 @@
-import { pipeline } from "@huggingface/transformers";
-import { modelChoice, sttModelId } from "./modelChoice";
+import { env, pipeline } from "@huggingface/transformers";
+import { modelChoice } from "./modelChoice";
 import {
   configureLocalOnnxEnv,
   withInferenceDeviceFallback,
   type InferenceDevice,
 } from "./onnxEnv";
+import { deliveryEnvFor, getActiveVersions, type DeliveryLoad } from "./updates";
 
 type AsrPipe = {
   (
@@ -16,12 +17,22 @@ type AsrPipe = {
 
 let cached: { key: string; pipe: AsrPipe } | null = null;
 
+function assignEnv(delivery: DeliveryLoad): void {
+  env.allowRemoteModels = delivery.allowRemoteModels;
+  env.allowLocalModels = delivery.allowLocalModels;
+  if (delivery.useBrowserCache !== undefined) env.useBrowserCache = delivery.useBrowserCache;
+  if (delivery.remoteHost !== undefined) env.remoteHost = delivery.remoteHost;
+  if (delivery.remotePathTemplate !== undefined) env.remotePathTemplate = delivery.remotePathTemplate;
+  if (delivery.localModelPath !== undefined) env.localModelPath = delivery.localModelPath;
+}
+
 async function loadPipe(
   device: InferenceDevice,
+  delivery: DeliveryLoad,
   onProgress?: (loaded: number, total?: number) => void,
 ): Promise<AsrPipe> {
   const dtype = modelChoice.stt_dtype as "q8" | "q4" | "q4f16";
-  const key = `${sttModelId}:${dtype}:${device}`;
+  const key = `${delivery.modelId}:${dtype}:${device}`;
   if (cached?.key === key) return cached.pipe;
   if (cached) {
     try {
@@ -31,7 +42,8 @@ async function loadPipe(
     }
     cached = null;
   }
-  const pipe = (await pipeline("automatic-speech-recognition", sttModelId, {
+  assignEnv(delivery);
+  const pipe = (await pipeline("automatic-speech-recognition", delivery.modelId, {
     dtype,
     device,
     progress_callback: onProgress
@@ -50,8 +62,11 @@ export async function transcribePcm(
   _sampleRate: number,
   onProgress?: (loaded: number, total?: number) => void,
 ): Promise<string> {
+  const active = await getActiveVersions();
+  const delivery = deliveryEnvFor("whisper", active.whisper, modelChoice);
+  if (delivery.skip) throw new Error("invalid model ID");
   configureLocalOnnxEnv();
-  const pipe = await withInferenceDeviceFallback((device) => loadPipe(device, onProgress));
+  const pipe = await withInferenceDeviceFallback((device) => loadPipe(device, delivery, onProgress));
   const out = await pipe(pcm, { language: "indonesian", task: "transcribe" });
   if (typeof out === "string") return out;
   return typeof out?.text === "string" ? out.text : "";
