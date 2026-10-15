@@ -79,7 +79,11 @@ function copyOrt(dist: string): void {
 
 function writePrecache(dist: string): void {
   const urls = ["/", "/index.html"];
-  listFiles(path.join(dist, "assets"), "/assets", urls);
+  const assets: string[] = [];
+  listFiles(path.join(dist, "assets"), "/assets", assets);
+  for (const url of assets) {
+    if (url.endsWith(".js") || url.endsWith(".css")) urls.push(url);
+  }
   fs.writeFileSync(path.join(dist, "precache.json"), `${JSON.stringify(urls)}\n`);
 }
 

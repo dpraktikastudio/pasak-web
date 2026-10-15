@@ -14,7 +14,11 @@ const WORKLET = `
 class PcmCapture extends AudioWorkletProcessor {
   process(inputs) {
     const ch = inputs[0] && inputs[0][0];
-    if (ch && ch.length) this.port.postMessage(ch.slice());
+    if (ch && ch.length) {
+      const copy = new Float32Array(ch.length);
+      copy.set(ch);
+      this.port.postMessage(copy);
+    }
     return true;
   }
 }
@@ -47,6 +51,10 @@ function concat(chunks: Float32Array[]): Float32Array {
   return out;
 }
 
+function fail(reason: TalkFail["reason"], message: string): TalkFail {
+  return { ok: false, reason, message };
+}
+
 export function startPushToTalk(opts: {
   onProgress?: (loaded: number, total?: number) => void;
 }): { stop: () => Promise<TalkResult> } {
@@ -63,87 +71,103 @@ export function startPushToTalk(opts: {
   let setupError: TalkResult | null = null;
 
   const run = (async (): Promise<TalkResult> => {
-    let stream: MediaStream;
+    let stream: MediaStream | undefined;
+    let ctx: AudioContext | undefined;
+    let url: string | undefined;
+    let hardTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
-      setupError = { ok: false, reason: "mic-denied", message: "Microphone permission denied." };
-      resolveReady();
-      return setupError;
-    }
-
-    const ctx = new AudioContext();
-    try {
-      await ctx.resume();
-    } catch {
-      // continue; some browsers resume on first node connect
-    }
-    const captureRate = ctx.sampleRate;
-    const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
-    await ctx.audioWorklet.addModule(url);
-    const node = new AudioWorkletNode(ctx, "pcm-capture");
-    const source = ctx.createMediaStreamSource(stream);
-    const mute = ctx.createGain();
-    mute.gain.value = 0;
-    source.connect(node);
-    node.connect(mute);
-    mute.connect(ctx.destination);
-
-    const chunks: Float32Array[] = [];
-    let speechMs = 0;
-    let silenceMs = 0;
-    let speechStarted = false;
-    const t0 = performance.now();
-    let autoStop = false;
-
-    node.port.onmessage = (ev: MessageEvent<Float32Array>) => {
-      if (stopped || autoStop) return;
-      const frame = ev.data instanceof Float32Array ? ev.data : new Float32Array(ev.data);
-      chunks.push(frame);
-      const frameMs = (frame.length / captureRate) * 1000;
-      const level = rms(frame);
-      if (!speechStarted) {
-        if (level >= SPEECH_RMS) speechMs += frameMs;
-        else speechMs = 0;
-        if (speechMs >= SPEECH_MS) speechStarted = true;
-      } else if (level < SILENCE_RMS) {
-        silenceMs += frameMs;
-        if (silenceMs >= SILENCE_MS) autoStop = true;
-      } else {
-        silenceMs = 0;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        setupError = fail("mic-denied", "Microphone permission denied.");
+        return setupError;
       }
-      if (performance.now() - t0 >= HARD_STOP_MS) autoStop = true;
-      if (autoStop) resolveStop();
-    };
 
-    resolveReady();
-    await stoppedP;
-    stopped = true;
-    source.disconnect();
-    node.disconnect();
-    mute.disconnect();
-    stream.getTracks().forEach((t) => t.stop());
-    await ctx.close();
-    URL.revokeObjectURL(url);
+      ctx = new AudioContext();
+      try {
+        await ctx.resume();
+      } catch {
+        // continue; some browsers resume on first node connect
+      }
+      const captureRate = ctx.sampleRate;
+      url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
+      await ctx.audioWorklet.addModule(url);
+      const node = new AudioWorkletNode(ctx, "pcm-capture");
+      const source = ctx.createMediaStreamSource(stream);
+      const mute = ctx.createGain();
+      mute.gain.value = 0;
+      source.connect(node);
+      node.connect(mute);
+      mute.connect(ctx.destination);
 
-    const pcm = concat(chunks);
-    const durationMs = (pcm.length / captureRate) * 1000;
-    if (!speechStarted || durationMs < MIN_CLIP_MS) {
-      return { ok: false, reason: "short-clip", message: "Clip too short. Hold and speak." };
-    }
-    const resampled = resampleMono(pcm, captureRate, TARGET_RATE);
-    try {
-      const out = await transcribeThenExtract(resampled, TARGET_RATE, {
-        todayLocalIso: localTodayIso(),
-        onProgress: opts.onProgress,
-      });
-      return { ok: true, ...out };
-    } catch (err) {
-      return {
-        ok: false,
-        reason: "error",
-        message: err instanceof Error ? err.message : "Transcription failed.",
+      const chunks: Float32Array[] = [];
+      let speechMs = 0;
+      let silenceMs = 0;
+      let speechStarted = false;
+      const t0 = performance.now();
+      let autoStop = false;
+      hardTimer = setTimeout(() => {
+        autoStop = true;
+        resolveStop();
+      }, HARD_STOP_MS);
+
+      node.port.onmessage = (ev: MessageEvent<Float32Array>) => {
+        if (stopped || autoStop) return;
+        const frame = ev.data instanceof Float32Array ? ev.data : new Float32Array(ev.data);
+        chunks.push(frame);
+        const frameMs = (frame.length / captureRate) * 1000;
+        const level = rms(frame);
+        if (!speechStarted) {
+          if (level >= SPEECH_RMS) speechMs += frameMs;
+          else speechMs = 0;
+          if (speechMs >= SPEECH_MS) speechStarted = true;
+        } else if (level < SILENCE_RMS) {
+          silenceMs += frameMs;
+          if (silenceMs >= SILENCE_MS) autoStop = true;
+        } else {
+          silenceMs = 0;
+        }
+        if (performance.now() - t0 >= HARD_STOP_MS) autoStop = true;
+        if (autoStop) resolveStop();
       };
+
+      resolveReady();
+      await stoppedP;
+      stopped = true;
+      source.disconnect();
+      node.disconnect();
+      mute.disconnect();
+      stream.getTracks().forEach((t) => t.stop());
+      await ctx.close().catch(() => undefined);
+      URL.revokeObjectURL(url);
+      stream = undefined;
+      ctx = undefined;
+      url = undefined;
+
+      const pcm = concat(chunks);
+      const durationMs = (pcm.length / captureRate) * 1000;
+      if (!speechStarted || durationMs < MIN_CLIP_MS) {
+        return fail("short-clip", "Clip too short. Hold and speak.");
+      }
+      const resampled = resampleMono(pcm, captureRate, TARGET_RATE);
+      try {
+        const out = await transcribeThenExtract(resampled, TARGET_RATE, {
+          todayLocalIso: localTodayIso(),
+          onProgress: opts.onProgress,
+        });
+        return { ok: true, ...out };
+      } catch (err) {
+        return fail("error", err instanceof Error ? err.message : "Transcription failed.");
+      }
+    } catch (err) {
+      setupError = fail("error", err instanceof Error ? err.message : "Capture failed.");
+      return setupError;
+    } finally {
+      if (hardTimer !== undefined) clearTimeout(hardTimer);
+      resolveReady();
+      stream?.getTracks().forEach((t) => t.stop());
+      if (ctx) await ctx.close().catch(() => undefined);
+      if (url) URL.revokeObjectURL(url);
     }
   })();
 

@@ -4,7 +4,7 @@ import { App } from "./App";
 import "./index.css";
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
-  void navigator.serviceWorker.register("/sw.js");
+  void navigator.serviceWorker.register("/sw.js", { type: "module" });
 }
 
 const root = document.getElementById("root");

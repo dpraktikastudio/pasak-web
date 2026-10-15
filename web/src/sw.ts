@@ -41,7 +41,8 @@ self.addEventListener("fetch", (event) => {
   const req = e.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
-  if (url.protocol === "blob:") return;
+  if (url.origin !== self.location.origin) return;
+  if (url.protocol === "blob:" || url.protocol === "data:") return;
 
   const modelsOrOrt = url.pathname.startsWith("/models/") || url.pathname.startsWith("/ort/");
   if (modelsOrOrt) {
@@ -57,6 +58,10 @@ self.addEventListener("fetch", (event) => {
     );
     return;
   }
+
+  const shellPath =
+    url.pathname === "/" || url.pathname === "/index.html" || url.pathname.startsWith("/assets/");
+  if (!shellPath) return;
 
   e.respondWith(
     (async () => {
