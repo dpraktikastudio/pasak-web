@@ -1,8 +1,9 @@
 import type { ExpenseFields, ExpenseRecord } from "./types";
 
 const DB_NAME = "pasak";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE = "expenses";
+const META = "meta";
 
 export function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -11,6 +12,9 @@ export function openDb(): Promise<IDBDatabase> {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) {
         db.createObjectStore(STORE, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(META)) {
+        db.createObjectStore(META, { keyPath: "key" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -73,6 +77,33 @@ export async function saveCorrection(id: string, correction: ExpenseFields | nul
           if (missing) reject(new Error(`missing expense: ${id}`));
           else resolve();
         };
+        tx.onerror = () => reject(tx.error);
+      }),
+  );
+}
+
+export async function getMeta<T>(key: string): Promise<T | undefined> {
+  return withDb(
+    (db) =>
+      new Promise<T | undefined>((resolve, reject) => {
+        const tx = db.transaction(META, "readonly");
+        const req = tx.objectStore(META).get(key);
+        req.onsuccess = () => {
+          const row = req.result as { key: string; value: T } | undefined;
+          resolve(row === undefined ? undefined : row.value);
+        };
+        req.onerror = () => reject(req.error);
+      }),
+  );
+}
+
+export async function putMeta(key: string, value: unknown): Promise<void> {
+  await withDb(
+    (db) =>
+      new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(META, "readwrite");
+        tx.objectStore(META).put({ key, value });
+        tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
       }),
   );

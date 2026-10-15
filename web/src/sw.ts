@@ -4,6 +4,7 @@ const sw = self as unknown as {
 };
 const SHELL = "pasak-shell-v2";
 const MODELS = "pasak-models-files";
+const BUNDLES = "pasak-models";
 
 self.addEventListener("install", (event) => {
   const e = event as Event & { waitUntil: (p: Promise<unknown>) => void };
@@ -25,7 +26,7 @@ self.addEventListener("activate", (event) => {
       const names = await caches.keys();
       await Promise.all(
         names
-          .filter((name) => name !== SHELL && name !== MODELS)
+          .filter((name) => name !== SHELL && name !== MODELS && name !== BUNDLES)
           .map((name) => caches.delete(name)),
       );
       await sw.clients.claim();
@@ -41,30 +42,30 @@ self.addEventListener("fetch", (event) => {
   const req = e.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return;
   if (url.protocol === "blob:" || url.protocol === "data:") return;
 
-  const modelsOrOrt = url.pathname.startsWith("/models/") || url.pathname.startsWith("/ort/");
-  if (modelsOrOrt) {
-    e.respondWith(
-      (async () => {
+  e.respondWith(
+    (async () => {
+      const bundles = await caches.open(BUNDLES);
+      const bundled = await bundles.match(req);
+      if (bundled) return bundled;
+
+      if (url.origin !== self.location.origin) return fetch(req);
+
+      const modelsOrOrt = url.pathname.startsWith("/models/") || url.pathname.startsWith("/ort/");
+      if (modelsOrOrt) {
         const cache = await caches.open(MODELS);
         const hit = await cache.match(req);
         if (hit) return hit;
         const res = await fetch(req);
         if (res.status === 200) await cache.put(req, res.clone());
         return res;
-      })(),
-    );
-    return;
-  }
+      }
 
-  const shellPath =
-    url.pathname === "/" || url.pathname === "/index.html" || url.pathname.startsWith("/assets/");
-  if (!shellPath) return;
+      const shellPath =
+        url.pathname === "/" || url.pathname === "/index.html" || url.pathname.startsWith("/assets/");
+      if (!shellPath) return fetch(req);
 
-  e.respondWith(
-    (async () => {
       const cache = await caches.open(SHELL);
       const hit = await cache.match(req);
       if (hit) return hit;

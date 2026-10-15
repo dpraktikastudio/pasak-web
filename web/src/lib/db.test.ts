@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, test } from "vitest";
-import { listExpenses, openDb, putExpense, saveCorrection } from "./db";
+import { getMeta, listExpenses, openDb, putExpense, putMeta, saveCorrection } from "./db";
 import type { ExpenseRecord } from "./types";
 
 const fields = {
@@ -79,10 +79,54 @@ describe("db", () => {
     await expect(saveCorrection("missing", { ...fields })).rejects.toThrow(/missing/);
   });
 
-  test("openDb has expenses store and not meta", async () => {
+  test("openDb has expenses and meta stores", async () => {
     const db = await openDb();
-    expect([...db.objectStoreNames]).toEqual(["expenses"]);
+    expect([...db.objectStoreNames].sort()).toEqual(["expenses", "meta"]);
     db.close();
+  });
+
+  test("expense inserted at version 1 is listed after openDb version 2", async () => {
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.open("pasak", 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains("expenses")) {
+          db.createObjectStore("expenses", { keyPath: "id" });
+        }
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction("expenses", "readwrite");
+        tx.objectStore("expenses").put(rec("v1", "2026-10-10T10:00:00.000Z"));
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      };
+      req.onerror = () => reject(req.error);
+    });
+
+    const db = await openDb();
+    expect(db.version).toBe(2);
+    expect([...db.objectStoreNames].sort()).toEqual(["expenses", "meta"]);
+    db.close();
+    const rows = await listExpenses();
+    expect(rows.map((r) => r.id)).toEqual(["v1"]);
+  });
+
+  test("meta stores { key, value }", async () => {
+    await putMeta("activeVersions", { whisper: null, interpreter: null });
+    const db = await openDb();
+    const row = await new Promise<{ key: string; value: unknown }>((resolve, reject) => {
+      const tx = db.transaction("meta", "readonly");
+      const req = tx.objectStore("meta").get("activeVersions");
+      req.onsuccess = () => resolve(req.result as { key: string; value: unknown });
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    expect(row).toEqual({ key: "activeVersions", value: { whisper: null, interpreter: null } });
+    expect(await getMeta("activeVersions")).toEqual({ whisper: null, interpreter: null });
   });
 
   test("saveCorrection leaves other fields unchanged", async () => {
