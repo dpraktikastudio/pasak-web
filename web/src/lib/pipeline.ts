@@ -86,8 +86,8 @@ export function validateInterpreterText(text: string): string | null {
   if (obj.merchant !== null && typeof obj.merchant !== "string") {
     return "merchant must be a string or null";
   }
-  if (obj.date !== null && (typeof obj.date !== "string" || !isIsoDate(obj.date))) {
-    return "date must be YYYY-MM-DD or null";
+  if (obj.date !== null && typeof obj.date !== "string") {
+    return "date must be a string or null";
   }
   return null;
 }

@@ -14,6 +14,8 @@ describe("transcribeThenExtract", () => {
     });
     expect(out.prediction.amount).toBe(15000);
     expect(out.prediction.currency).toBe("IDR");
+    expect(interpret).toHaveBeenCalledTimes(2);
+    expect(out.prediction.category).toBe(null);
   });
 
   test("resolveDate wins over interpreter date", async () => {
@@ -44,6 +46,23 @@ describe("transcribeThenExtract", () => {
       rulesOnly: false,
     });
     expect(out.prediction.date).toBe(null);
+    expect(out.prediction.category).toBe("food");
+  });
+
+  test("a second JSON value is retried once; category stays null", async () => {
+    const interpret = vi.fn(
+      async () =>
+        '{"category":"food","merchant":null,"date":null}{"category":"other","merchant":null,"date":null}',
+    );
+    const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
+      todayLocalIso: "2026-10-10",
+      transcribe: async () => "beli kopi 15 ribu",
+      interpret,
+      rulesOnly: false,
+    });
+    expect(interpret).toHaveBeenCalledTimes(2);
+    expect(out.prediction.category).toBe(null);
+    expect(out.prediction.amount).toBe(15000);
   });
 
   test("invalid JSON is retried once; amount and date remain", async () => {

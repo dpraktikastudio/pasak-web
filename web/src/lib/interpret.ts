@@ -4,7 +4,11 @@ import {
   interpreterModelId,
   modelChoice,
 } from "./modelChoice";
-import { configureLocalOnnxEnv } from "./onnxEnv";
+import {
+  configureLocalOnnxEnv,
+  withInferenceDeviceFallback,
+  type InferenceDevice,
+} from "./onnxEnv";
 
 type GenPipe = {
   (messages: { role: string; content: string }[], opts: Record<string, unknown>): Promise<unknown>;
@@ -14,10 +18,8 @@ type GenPipe = {
 let cached: { key: string; pipe: GenPipe } | null = null;
 let thinkingFallbackNoted = false;
 
-function hasGpu(): boolean {
-  return typeof navigator !== "undefined" && Boolean(navigator.gpu);
-}
-
+const THINKING_FALLBACK_LINE =
+  "qwen3_thinking_fallback: tokenizer_encode_kwargs rejected; strip one leading think block";
 
 function userPrompt(transcript: string, extra?: string): string {
   let text =
@@ -44,11 +46,13 @@ function assistantText(output: unknown): string {
   const gt = (row as { generated_text?: unknown }).generated_text;
   if (typeof gt === "string") return gt;
   if (Array.isArray(gt)) {
-    const last = gt[gt.length - 1];
-    if (typeof last === "string") return last;
-    if (last && typeof last === "object" && "content" in last) {
-      const c = (last as { content: unknown }).content;
-      return typeof c === "string" ? c : "";
+    for (let i = gt.length - 1; i >= 0; i--) {
+      const part = gt[i];
+      if (part && typeof part === "object" && (part as { role?: string }).role === "assistant") {
+        const c = (part as { content?: unknown }).content;
+        if (typeof c === "string") return c;
+      }
+      if (typeof part === "string") return part;
     }
   }
   return "";
@@ -58,9 +62,30 @@ function stripThink(text: string): string {
   return text.replace(/^\s*<think>[\s\S]*?<\/think>\s*/, "");
 }
 
-async function loadPipe(device: "webgpu" | "wasm"): Promise<GenPipe> {
+async function recordThinkingFallback(): Promise<void> {
+  if (thinkingFallbackNoted) return;
+  thinkingFallbackNoted = true;
+  try {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const decision = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../../docs/decisions/phase-0-model-choice.md",
+    );
+    const existing = fs.readFileSync(decision, "utf8");
+    if (existing.includes("qwen3_thinking_fallback:")) return;
+    const prefix = existing.endsWith("\n") ? "" : "\n";
+    fs.appendFileSync(decision, `${prefix}${THINKING_FALLBACK_LINE}\n`);
+  } catch {
+    // browser or unwritable decision file
+  }
+}
+
+async function loadPipe(device: InferenceDevice): Promise<GenPipe> {
   if (!interpreterModelId) throw new Error("interpreter is rules-only");
-  const key = `${interpreterModelId}:${modelChoice.interpreter_dtype}:${device}`;
+  const dtype = modelChoice.interpreter_dtype as "q8" | "q4" | "q4f16";
+  const key = `${interpreterModelId}:${dtype}:${device}`;
   if (cached?.key === key) return cached.pipe;
   if (cached) {
     try {
@@ -70,7 +95,6 @@ async function loadPipe(device: "webgpu" | "wasm"): Promise<GenPipe> {
     }
     cached = null;
   }
-  const dtype = modelChoice.interpreter_dtype as "q8" | "q4" | "q4f16";
   const pipe = (await pipeline("text-generation", interpreterModelId, {
     dtype,
     device,
@@ -84,32 +108,23 @@ export async function completeInterpreter(transcript: string, repairError?: stri
     throw new Error("interpreter is rules-only");
   }
   configureLocalOnnxEnv();
-  const prefer = hasGpu() ? "webgpu" : "wasm";
-  let pipe: GenPipe;
-  try {
-    pipe = await loadPipe(prefer);
-  } catch (err) {
-    if (prefer !== "webgpu") throw err;
-    pipe = await loadPipe("wasm");
-  }
+  const pipe = await withInferenceDeviceFallback(loadPipe);
 
+  const extra = repairError ? repairError : undefined;
   const opts: Record<string, unknown> = { max_new_tokens: 256, do_sample: false };
   const qwen = modelChoice.interpreter === "qwen3-0.6b";
   if (qwen) opts.tokenizer_encode_kwargs = { enable_thinking: false };
 
   try {
-    const output = await pipe(messagesFor(transcript, repairError), opts);
-    const text = assistantText(output);
-    return qwen ? text : text;
-  } catch {
-    if (!qwen) throw new Error("interpreter generate failed");
-    const output = await pipe(messagesFor(transcript, repairError), {
+    const output = await pipe(messagesFor(transcript, extra), opts);
+    return assistantText(output);
+  } catch (err) {
+    if (!qwen) throw err;
+    const output = await pipe(messagesFor(transcript, extra), {
       max_new_tokens: 256,
       do_sample: false,
     });
-    if (!thinkingFallbackNoted) {
-      thinkingFallbackNoted = true;
-    }
+    await recordThinkingFallback();
     return stripThink(assistantText(output));
   }
 }
