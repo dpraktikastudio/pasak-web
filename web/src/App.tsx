@@ -6,6 +6,7 @@ import { interpreterVersionLabel, sttVersionLabel } from "./lib/modelChoice";
 import type { Category, ExpenseFields, ExpenseRecord } from "./lib/types";
 
 const CATEGORIES: Category[] = ["food", "transport", "bills", "shopping", "health", "other"];
+const FIELD_KEYS: (keyof ExpenseFields)[] = ["amount", "currency", "category", "merchant", "date"];
 
 function fieldsEqual(a: ExpenseFields, b: ExpenseFields): boolean {
   return (
@@ -22,16 +23,19 @@ function displayDate(stored: string | null, today: string): { value: string; unc
   return { value: today, unconfirmed: true };
 }
 
+function showField(value: string | number | null): string {
+  return value === null ? "null" : String(value);
+}
+
 export function App() {
   const [rows, setRows] = useState<ExpenseRecord[]>([]);
   const [status, setStatus] = useState("");
   const [holding, setHolding] = useState(false);
   const [progress, setProgress] = useState<{ loaded: number; total?: number } | null>(null);
-  const [draftId, setDraftId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<ExpenseRecord | null>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [transcript, setTranscript] = useState("");
   const [form, setForm] = useState<ExpenseFields>({
     amount: null,
     currency: null,
@@ -39,9 +43,10 @@ export function App() {
     merchant: null,
     date: null,
   });
-  const [prediction, setPrediction] = useState<ExpenseFields | null>(null);
   const [dateTouched, setDateTouched] = useState(false);
+  const [busy, setBusy] = useState(false);
   const session = useRef<ReturnType<typeof startPushToTalk> | null>(null);
+  const savingRef = useRef(false);
   const today = localTodayIso();
 
   async function reload() {
@@ -54,21 +59,24 @@ export function App() {
 
   const amountOk = form.amount !== null && Number.isInteger(form.amount) && form.amount >= 0;
   const currencyOk = Boolean(form.currency && form.currency.trim());
-  const canSave = amountOk && currencyOk && !saving && prediction !== null;
+  const canSave = amountOk && currencyOk && !saving && draft !== null;
 
-  function amountError(): string | null {
-    if (prediction === null) return null;
-    if (!amountOk) return "Amount must be a whole number 0 or greater.";
-    if (!currencyOk) return "Currency is required.";
-    return null;
+  function formForSave(): ExpenseFields {
+    if (!draft) return form;
+    return {
+      amount: form.amount,
+      currency: form.currency,
+      category: form.category,
+      merchant: form.merchant === "" ? null : form.merchant,
+      date: dateTouched ? form.date : draft.prediction.date,
+    };
   }
 
   async function onPointerDown(e: PointerEvent<HTMLButtonElement>) {
-    if (holding) return;
+    if (holding || busy) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     setStatus("");
     setHolding(true);
-    setProgress({ loaded: 0 });
     session.current = startPushToTalk({
       onProgress: (loaded, total) => setProgress({ loaded, total }),
     });
@@ -79,61 +87,63 @@ export function App() {
     session.current = null;
     setHolding(false);
     if (!s) return;
-    const result = await s.stop();
-    setProgress(null);
-    if (!result.ok) {
-      setStatus(result.message);
-      return;
+    setBusy(true);
+    try {
+      const result = await s.stop();
+      setProgress(null);
+      if (!result.ok) {
+        setStatus(result.message);
+        return;
+      }
+      const next: ExpenseRecord = {
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+        transcript: result.transcript,
+        prediction: result.prediction,
+        correction: null,
+        modelVersions: { stt: sttVersionLabel, interpreter: interpreterVersionLabel },
+      };
+      setDraft(next);
+      setSaved(false);
+      setOpenId(null);
+      setForm({ ...result.prediction });
+      setDateTouched(false);
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Capture failed.");
+    } finally {
+      setBusy(false);
     }
-    const id = crypto.randomUUID();
-    setDraftId(id);
-    setSaved(false);
-    setOpenId(null);
-    setTranscript(result.transcript);
-    setPrediction(result.prediction);
-    setForm({ ...result.prediction });
-    setDateTouched(false);
-  }
-
-  function formForSave(): ExpenseFields {
-    const date = dateTouched ? form.date : prediction!.date;
-    return {
-      amount: form.amount,
-      currency: form.currency,
-      category: form.category,
-      merchant: form.merchant === "" ? null : form.merchant,
-      date,
-    };
   }
 
   async function onSave() {
-    if (!canSave || !prediction || !draftId) return;
+    if (!canSave || !draft || savingRef.current) return;
     const next = formForSave();
-    const correction = fieldsEqual(next, prediction) ? null : next;
+    const correction = fieldsEqual(next, draft.prediction) ? null : next;
+    savingRef.current = true;
     setSaving(true);
     try {
       if (!saved) {
-        const record: ExpenseRecord = {
-          id: draftId,
-          createdAt: new Date().toISOString(),
-          transcript,
-          prediction,
+        await putExpense({
+          ...draft,
           correction,
-          modelVersions: { stt: sttVersionLabel, interpreter: interpreterVersionLabel },
-        };
-        await putExpense(record);
+        });
         setSaved(true);
       } else {
-        await saveCorrection(draftId, correction);
+        await saveCorrection(draft.id, correction);
       }
+      setDraft({ ...draft, correction });
       await reload();
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Save failed.");
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
 
-  const dateUi = displayDate(dateTouched ? form.date : prediction?.date ?? null, today);
-  const err = amountError();
+  const dateUi = displayDate(dateTouched ? form.date : (draft?.prediction.date ?? null), today);
+  const amountErr = draft && !amountOk ? "Amount must be a whole number 0 or greater." : null;
+  const currencyErr = draft && !currencyOk ? "Currency is required." : null;
 
   return (
     <main>
@@ -145,27 +155,35 @@ export function App() {
       </p>
       <button
         type="button"
+        disabled={busy}
         onPointerDown={(e) => void onPointerDown(e)}
         onPointerUp={() => void onPointerUp()}
         onPointerCancel={() => void onPointerUp()}
       >
-        {holding ? "Recording…" : "Hold to record"}
+        {holding ? "Recording…" : busy ? "Transcribing…" : "Hold to record"}
       </button>
       {progress ? (
         <p>
-          <progress value={progress.total ? progress.loaded : undefined} max={progress.total} />{" "}
+          {progress.total != null ? (
+            <progress value={progress.loaded} max={progress.total} />
+          ) : (
+            <progress />
+          )}{" "}
           {progress.loaded}
-          {progress.total ? ` / ${progress.total}` : " bytes"}
+          {progress.total != null ? ` / ${progress.total}` : " bytes"}
         </p>
       ) : null}
       {status ? <p role="status">{status}</p> : null}
 
-      {prediction ? (
+      {draft ? (
         <section>
           <h2>Current</h2>
           <label>
             Transcript
-            <textarea value={transcript} onChange={(e) => setTranscript(e.target.value)} />
+            <textarea
+              value={draft.transcript}
+              onChange={(e) => setDraft({ ...draft, transcript: e.target.value })}
+            />
           </label>
           <label>
             Amount
@@ -178,6 +196,7 @@ export function App() {
               }}
             />
           </label>
+          {amountErr ? <p role="alert">{amountErr}</p> : null}
           <label>
             Currency
             <input
@@ -185,7 +204,7 @@ export function App() {
               onChange={(e) => setForm({ ...form, currency: e.target.value || null })}
             />
           </label>
-          {err ? <p role="alert">{err}</p> : null}
+          {currencyErr ? <p role="alert">{currencyErr}</p> : null}
           <label>
             Category
             <select
@@ -236,16 +255,29 @@ export function App() {
               <li key={row.id}>
                 <button type="button" onClick={() => setOpenId(row.id === openId ? null : row.id)}>
                   {shown.amount ?? "—"} {shown.currency ?? ""} {shown.category ?? ""}{" "}
-                  {d.unconfirmed ? `(today unconfirmed)` : d.value}
+                  {d.unconfirmed ? "(today unconfirmed)" : d.value}
                 </button>
                 {openId === row.id ? (
-                  <pre>
-                    {JSON.stringify(
-                      { prediction: row.prediction, correction: row.correction, transcript: row.transcript },
-                      null,
-                      2,
-                    )}
-                  </pre>
+                  <div>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>field</th>
+                          <th>prediction</th>
+                          <th>correction</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {FIELD_KEYS.map((key) => (
+                          <tr key={key}>
+                            <td>{key}</td>
+                            <td>{showField(row.prediction[key])}</td>
+                            <td>{row.correction ? showField(row.correction[key]) : "null"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 ) : null}
               </li>
             );

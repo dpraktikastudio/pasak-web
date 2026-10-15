@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, test } from "vitest";
-import { listExpenses, putExpense, saveCorrection } from "./db";
+import { listExpenses, openDb, putExpense, saveCorrection } from "./db";
 import type { ExpenseRecord } from "./types";
 
 const fields = {
@@ -73,5 +73,27 @@ describe("db", () => {
     const rows = await listExpenses();
     expect(rows).toHaveLength(1);
     expect(rows[0].transcript).toBe("updated");
+  });
+
+  test("missing id rejects", async () => {
+    await expect(saveCorrection("missing", { ...fields })).rejects.toThrow(/missing/);
+  });
+
+  test("openDb has expenses store and not meta", async () => {
+    const db = await openDb();
+    expect([...db.objectStoreNames]).toEqual(["expenses"]);
+    db.close();
+  });
+
+  test("saveCorrection leaves other fields unchanged", async () => {
+    const original = rec("a", "2026-10-10T10:00:00.000Z", { transcript: "keep me" });
+    await putExpense(original);
+    await saveCorrection("a", { ...fields, category: "bills" });
+    const rows = await listExpenses();
+    expect(rows[0].id).toBe("a");
+    expect(rows[0].createdAt).toBe(original.createdAt);
+    expect(rows[0].transcript).toBe("keep me");
+    expect(rows[0].modelVersions).toEqual(original.modelVersions);
+    expect(rows[0].prediction).toEqual(fields);
   });
 });

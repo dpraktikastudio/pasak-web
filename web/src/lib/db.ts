@@ -59,17 +59,20 @@ export async function saveCorrection(id: string, correction: ExpenseFields | nul
         const tx = db.transaction(STORE, "readwrite");
         const store = tx.objectStore(STORE);
         const getReq = store.get(id);
+        let missing = false;
         getReq.onsuccess = () => {
           const row = getReq.result as ExpenseRecord | undefined;
           if (!row) {
-            tx.abort();
-            reject(new Error(`missing expense: ${id}`));
+            missing = true;
             return;
           }
           store.put({ ...row, correction });
         };
         getReq.onerror = () => reject(getReq.error);
-        tx.oncomplete = () => resolve();
+        tx.oncomplete = () => {
+          if (missing) reject(new Error(`missing expense: ${id}`));
+          else resolve();
+        };
         tx.onerror = () => reject(tx.error);
       }),
   );
