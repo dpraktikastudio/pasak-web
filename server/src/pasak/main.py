@@ -6,9 +6,11 @@ from urllib.parse import urlparse
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
+from starlette.types import ASGIApp
 
 from pasak.db import apply_migrations, connect
 from pasak.env import load_local_env
+from pasak.sync import router as sync_router
 
 load_local_env()
 log = logging.getLogger("uvicorn.error")
@@ -18,7 +20,24 @@ FAMILIES = ("whisper", "interpreter")
 
 def cors_origins() -> list[str]:
     raw = os.environ.get("CORS_ORIGINS", "")
-    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    web = os.environ.get("WEB_ORIGIN", "").strip()
+    if web and web not in origins:
+        origins.append(web)
+    return origins
+
+
+class PasakCORSMiddleware(CORSMiddleware):
+    def __init__(self, app: ASGIApp) -> None:
+        super().__init__(
+            app,
+            allow_origins=(),
+            allow_credentials=False,
+            allow_methods=["GET", "HEAD", "OPTIONS", "POST", "DELETE"],
+        )
+
+    def is_allowed_origin(self, origin: str) -> bool:
+        return origin in cors_origins()
 
 
 @asynccontextmanager
@@ -46,11 +65,8 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins(),
-    allow_credentials=False,
-)
+app.add_middleware(PasakCORSMiddleware)
+app.include_router(sync_router)
 
 
 @app.get("/health")
