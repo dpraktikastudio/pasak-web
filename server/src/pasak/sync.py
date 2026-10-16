@@ -241,8 +241,8 @@ def post_example(body: dict):
     install_id, consent_version, transcript, prediction, correction, model_versions = (
         _parse_example_fields(body)
     )
-    _reject_extra_top_level_keys(body)
     _require_active_consent(install_id, consent_version)
+    _reject_extra_top_level_keys(body)
 
     scrub_input = {
         "transcript": transcript,
