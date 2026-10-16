@@ -2,12 +2,12 @@ import { localTodayIso } from "./dates";
 import { resampleMono, transcribeThenExtract } from "./pipeline";
 import type { ExpenseFields } from "./types";
 
-export const SPEECH_RMS = 0.015;
-export const SPEECH_MS = 200;
-export const SILENCE_RMS = 0.01;
-export const SILENCE_MS = 800;
+export const SPEECH_RMS = 0.004;
+export const SPEECH_MS = 80;
+export const SILENCE_RMS = 0.0025;
+export const SILENCE_MS = 2000;
 export const HARD_STOP_MS = 20000;
-export const MIN_CLIP_MS = 400;
+export const MIN_CLIP_MS = 250;
 export const TARGET_RATE = 16000;
 
 const WORKLET = `
@@ -57,6 +57,7 @@ function fail(reason: TalkFail["reason"], message: string): TalkFail {
 
 export function startPushToTalk(opts: {
   onProgress?: (loaded: number, total?: number) => void;
+  onLevel?: (rms: number) => void;
 }): { stop: () => Promise<TalkResult> } {
   let stopped = false;
   let resolveStop = (): void => {};
@@ -117,6 +118,7 @@ export function startPushToTalk(opts: {
         chunks.push(frame);
         const frameMs = (frame.length / captureRate) * 1000;
         const level = rms(frame);
+        opts.onLevel?.(level);
         if (!speechStarted) {
           if (level >= SPEECH_RMS) speechMs += frameMs;
           else speechMs = 0;
@@ -146,8 +148,8 @@ export function startPushToTalk(opts: {
 
       const pcm = concat(chunks);
       const durationMs = (pcm.length / captureRate) * 1000;
-      if (!speechStarted || durationMs < MIN_CLIP_MS) {
-        return fail("short-clip", "Clip too short. Hold and speak.");
+      if (durationMs < MIN_CLIP_MS) {
+        return fail("short-clip", "Clip too short. Tap, speak, then tap again.");
       }
       const resampled = resampleMono(pcm, captureRate, TARGET_RATE);
       try {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { startPushToTalk } from "./lib/audio";
 import { listExpenses, putExpense, saveCorrection } from "./lib/db";
 import { localTodayIso } from "./lib/dates";
@@ -48,6 +48,8 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const session = useRef<ReturnType<typeof startPushToTalk> | null>(null);
   const savingRef = useRef(false);
+  const meterRef = useRef<HTMLCanvasElement>(null);
+  const levelsRef = useRef<number[]>([]);
   const today = localTodayIso();
 
   async function reload() {
@@ -73,17 +75,43 @@ export function App() {
     };
   }
 
-  async function onPointerDown(e: PointerEvent<HTMLButtonElement>) {
-    if (holding || busy) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    setStatus("");
-    setHolding(true);
-    session.current = startPushToTalk({
-      onProgress: (loaded, total) => setProgress({ loaded, total }),
-    });
-  }
+  useEffect(() => {
+    if (!holding) {
+      levelsRef.current = [];
+      const c = meterRef.current;
+      if (c) {
+        const ctx = c.getContext("2d");
+        ctx?.clearRect(0, 0, c.width, c.height);
+      }
+      return;
+    }
+    let raf = 0;
+    const draw = () => {
+      const canvas = meterRef.current;
+      if (!canvas) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const w = canvas.width;
+      const h = canvas.height;
+      const levels = levelsRef.current;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#111";
+      const barW = w / 80;
+      for (let i = 0; i < levels.length; i++) {
+        const amp = Math.min(1, levels[i] * 18);
+        const bh = Math.max(2, amp * h);
+        ctx.fillRect(i * barW, (h - bh) / 2, Math.max(1, barW - 1), bh);
+      }
+      raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, [holding]);
 
-  async function onPointerUp() {
+  async function stopRecording() {
     const s = session.current;
     session.current = null;
     setHolding(false);
@@ -114,6 +142,25 @@ export function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function onRecordClick() {
+    if (busy) return;
+    if (holding) {
+      void stopRecording();
+      return;
+    }
+    setStatus("");
+    setHolding(true);
+    levelsRef.current = [];
+    session.current = startPushToTalk({
+      onProgress: (loaded, total) => setProgress({ loaded, total }),
+      onLevel: (level) => {
+        const next = levelsRef.current;
+        next.push(level);
+        if (next.length > 80) next.shift();
+      },
+    });
   }
 
   async function onSave() {
@@ -150,19 +197,26 @@ export function App() {
     <main>
       <h1>pasak-web</h1>
       <p>
-        Hold to talk. Release to transcribe. Models stay on this device (
+        Tap to record, speak, tap again to stop. Models stay on this device (
         <code>{sttVersionLabel}</code>
         {interpreterVersionLabel ? `, ${interpreterVersionLabel}` : ", rules-only"}).
       </p>
       <button
         type="button"
         disabled={busy}
-        onPointerDown={(e) => void onPointerDown(e)}
-        onPointerUp={() => void onPointerUp()}
-        onPointerCancel={() => void onPointerUp()}
+        aria-pressed={holding}
+        onClick={onRecordClick}
       >
-        {holding ? "Recording…" : busy ? "Transcribing…" : "Hold to record"}
+        {holding ? "Tap to stop" : busy ? "Transcribing…" : "Tap to record"}
       </button>
+      <canvas
+        ref={meterRef}
+        className="level-meter"
+        width={320}
+        height={48}
+        hidden={!holding}
+        aria-hidden
+      />
       {progress ? (
         <p>
           {progress.total != null ? (

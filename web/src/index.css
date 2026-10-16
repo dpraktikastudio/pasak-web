@@ -34,3 +34,12 @@ select {
 ul {
   padding-left: 1rem;
 }
+
+.level-meter {
+  display: block;
+  width: 100%;
+  max-width: 20rem;
+  height: 3rem;
+  margin: 0.5rem 0;
+  background: #e8e8e4;
+}

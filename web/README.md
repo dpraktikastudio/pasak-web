@@ -30,7 +30,7 @@ STT loads same-origin `/models/whisper-small/spike` via Vite middleware.
 npm run dev
 ```
 
-Open the printed URL (usually `http://127.0.0.1:5173`). Hold **Hold to record**, speak, release.
+Open the printed URL (usually `http://127.0.0.1:5173`). **Tap to record**, speak, **tap again** to stop. A level meter shows while capturing.
 
 ## Run with the API (Phase 2)
 
