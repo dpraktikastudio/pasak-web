@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from pasak.db import apply_migrations, connect
+from pasak.env import load_local_env
 from pasak.storage import storage_from_env
 
 FAMILIES = ("whisper", "interpreter")
@@ -190,6 +191,7 @@ def _rollback(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_local_env()
     if argv is None:
         argv = sys.argv[1:]
     parser = argparse.ArgumentParser(prog="pasak.admin")

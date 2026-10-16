@@ -6,6 +6,9 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 
 from pasak.db import apply_migrations, connect
+from pasak.env import load_local_env
+
+load_local_env()
 
 FAMILIES = ("whisper", "interpreter")
 
@@ -47,6 +50,7 @@ def health():
 def manifest():
     conn = connect()
     try:
+        apply_migrations(conn)
         with conn.cursor() as cur:
             cur.execute(
                 """
