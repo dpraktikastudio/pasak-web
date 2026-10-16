@@ -46,6 +46,7 @@ export function App() {
   });
   const [dateTouched, setDateTouched] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [clipUrl, setClipUrl] = useState<string | null>(null);
   const session = useRef<ReturnType<typeof startPushToTalk> | null>(null);
   const savingRef = useRef(false);
   const meterRef = useRef<HTMLCanvasElement>(null);
@@ -59,6 +60,12 @@ export function App() {
   useEffect(() => {
     void reload();
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (clipUrl) URL.revokeObjectURL(clipUrl);
+    };
+  }, [clipUrl]);
 
   const amountOk = form.amount !== null && Number.isInteger(form.amount) && form.amount >= 0;
   const currencyOk = Boolean(form.currency && form.currency.trim());
@@ -132,6 +139,8 @@ export function App() {
         correction: null,
         modelVersions: expenseModelVersions(await getActiveVersions(), modelChoice),
       };
+      if (clipUrl) URL.revokeObjectURL(clipUrl);
+      setClipUrl(result.clipUrl);
       setDraft(next);
       setSaved(false);
       setOpenId(null);
@@ -209,6 +218,12 @@ export function App() {
       >
         {holding ? "Tap to stop" : busy ? "Transcribing…" : "Tap to record"}
       </button>
+      {busy ? (
+        <p className="transcribe-status" role="status" aria-live="polite" aria-busy="true">
+          <span className="spinner" aria-hidden />
+          Transcribing… Whisper can take a while on first load.
+        </p>
+      ) : null}
       <canvas
         ref={meterRef}
         className="level-meter"
@@ -233,6 +248,14 @@ export function App() {
       {draft ? (
         <section>
           <h2>Current</h2>
+          {clipUrl ? (
+            <label>
+              Playback (16 kHz clip sent to Whisper, this session only)
+              <audio controls src={clipUrl} />
+            </label>
+          ) : (
+            <p>No clip in memory. Record again to hear what Whisper got.</p>
+          )}
           <label>
             Transcript
             <textarea

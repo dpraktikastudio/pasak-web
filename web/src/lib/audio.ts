@@ -25,7 +25,41 @@ class PcmCapture extends AudioWorkletProcessor {
 registerProcessor("pcm-capture", PcmCapture);
 `;
 
-export type TalkOk = { ok: true; transcript: string; prediction: ExpenseFields };
+export type TalkOk = {
+  ok: true;
+  transcript: string;
+  prediction: ExpenseFields;
+  clipUrl: string;
+};
+
+function pcmToWavBlob(pcm: Float32Array, sampleRate: number): Blob {
+  const n = pcm.length;
+  const bytes = new ArrayBuffer(44 + n * 2);
+  const view = new DataView(bytes);
+  const write = (offset: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+  };
+  write(0, "RIFF");
+  view.setUint32(4, 36 + n * 2, true);
+  write(8, "WAVE");
+  write(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  write(36, "data");
+  view.setUint32(40, n * 2, true);
+  let o = 44;
+  for (let i = 0; i < n; i++) {
+    const x = Math.max(-1, Math.min(1, pcm[i]));
+    view.setInt16(o, x < 0 ? x * 0x8000 : x * 0x7fff, true);
+    o += 2;
+  }
+  return new Blob([bytes], { type: "audio/wav" });
+}
 export type TalkFail = {
   ok: false;
   reason: "mic-denied" | "short-clip" | "error";
@@ -157,7 +191,11 @@ export function startPushToTalk(opts: {
           todayLocalIso: localTodayIso(),
           onProgress: opts.onProgress,
         });
-        return { ok: true, ...out };
+        return {
+          ok: true,
+          ...out,
+          clipUrl: URL.createObjectURL(pcmToWavBlob(resampled, TARGET_RATE)),
+        };
       } catch (err) {
         return fail("error", err instanceof Error ? err.message : "Transcription failed.");
       }
