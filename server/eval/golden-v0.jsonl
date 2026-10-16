@@ -1,0 +1,100 @@
+{"id":"ex-001","transcript":"Beli Vape 350 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":350000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-002","transcript":"Bakso 10 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":10000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-003","transcript":"Beli Rokok 25 ribu","slice":"hard","spokenOn":"2026-10-14","expected":{"amount":25000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-004","transcript":"Kopi 60 ribu satu liter","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":60000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-005","transcript":"Beli HP kemaren 3,5","slice":"hard","spokenOn":"2026-10-14","expected":{"amount":3500000,"currency":"IDR","category":"shopping","merchant":null,"date":null}}
+{"id":"ex-006","transcript":"Beli Vape sama Catridge 400 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":400000,"currency":"IDR","category":"shopping","merchant":null,"date":null}}
+{"id":"ex-007","transcript":"Liquid Foom 45 Ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":45000,"currency":"IDR","category":"shopping","merchant":null,"date":null}}
+{"id":"ex-008","transcript":"Nasi goreng 18 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":18000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-009","transcript":"Kopi susu 22k","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":22000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-010","transcript":"Es teh manis 5 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":5000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-011","transcript":"Makan siang di warteg 25 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":25000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-012","transcript":"Ayam geprek 20rb","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":20000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-013","transcript":"Sate ayam 30 ribu dua porsi","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":30000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-014","transcript":"Beli galon 20 ribu","slice":"hard","spokenOn":"2026-10-14","expected":{"amount":20000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-015","transcript":"Martabak manis 45k","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":45000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-016","transcript":"Mie ayam 15 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":15000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-017","transcript":"Sarapan bubur ayam 12 ribu","slice":"hard","spokenOn":"2026-10-14","expected":{"amount":12000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-018","transcript":"Kopi di Starbucks 55 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":55000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-019","transcript":"Jajan cilok 10 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":10000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-020","transcript":"Pesan GoFood nasi padang 38 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":38000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-021","transcript":"Makan malam sama keluarga 250 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":250000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-022","transcript":"Boba 28k","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":28000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-023","transcript":"Beli roti 15 ribu di Indomaret","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":15000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-024","transcript":"Gado-gado 17 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":17000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-025","transcript":"Soto betawi 35 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":35000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-026","transcript":"Es kelapa muda 12 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":12000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-027","transcript":"Air mineral 3 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":3000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-028","transcript":"Belanja bulanan di Alfamart 450 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":450000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-029","transcript":"Telur satu kilo 28 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":28000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-030","transcript":"Beras 5 kilo 65 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":65000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-031","transcript":"Beli sayur di pasar 30 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":30000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-032","transcript":"Minyak goreng 2 liter 38k","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":38000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-033","transcript":"Susu 25 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":25000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-034","transcript":"Sabun mandi sama sampo 42 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":42000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-035","transcript":"Deterjen 22 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":22000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-036","transcript":"Belanja di Superindo 320 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":320000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-037","transcript":"Buah apel 45 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":45000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-038","transcript":"Bensin 50 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":50000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-039","transcript":"Isi pertamax 100k","slice":"hard","spokenOn":"2026-10-14","expected":{"amount":100000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-040","transcript":"Gojek ke kantor 18 ribu","slice":"hard","spokenOn":"2026-10-14","expected":{"amount":18000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-041","transcript":"Grab ke bandara 120 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":120000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-042","transcript":"Parkir 3 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":3000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-043","transcript":"Tol 15 Tol 15 ribu","slice":"hard","spokenOn":"2026-10-14","expected":{"amount":15000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-044","transcript":"Naik angkot 5 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":5000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-045","transcript":"Top up e-toll 100 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":100000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-046","transcript":"Servis motor 150 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":150000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-047","transcript":"Ganti oli 65 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":65000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-048","transcript":"Tiket kereta ke Jakarta 180 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":180000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-049","transcript":"Tiket pesawat ke Bali 1,2 juta","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":1200000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-050","transcript":"Ojek online pulang 22 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":22000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-051","transcript":"Top up kartu TransJakarta 50 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":50000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-052","transcript":"Tambal ban 15 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":15000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-053","transcript":"Bayar listrik 350 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":350000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-054","transcript":"Token listrik 100 ribu","slice":"hard","spokenOn":"2026-10-14","expected":{"amount":100000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-055","transcript":"Bayar wifi 330 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":330000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-056","transcript":"Pulsa 25 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":25000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-057","transcript":"Paket data 75k","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":75000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-058","transcript":"Bayar PDAM 80 ribu","slice":"hard","spokenOn":"2026-10-14","expected":{"amount":80000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-059","transcript":"Cicilan motor 1,5 juta","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":1500000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-060","transcript":"Bayar kos 1,2 juta","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":1200000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-061","transcript":"Kontrakan 2 juta sebulan","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":2000000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-062","transcript":"Langganan Netflix 54 ribu","slice":"hard","spokenOn":"2026-10-14","expected":{"amount":54000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-063","transcript":"Spotify 55k","slice":"hard","spokenOn":"2026-10-14","expected":{"amount":55000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-064","transcript":"BPJS 150 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":150000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-065","transcript":"Iuran sampah 25 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":25000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-066","transcript":"Bayar asuransi 500 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":500000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-067","transcript":"Bayar kartu kredit 2,5 juta","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":2500000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-068","transcript":"Beli baju di Shopee 120 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":120000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-069","transcript":"Kaos 85k","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":85000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-070","transcript":"Beli tas 275 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":275000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-071","transcript":"Headset di Tokopedia 199 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":199000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-072","transcript":"Celana jeans 250 ribu","slice":"hard","spokenOn":"2026-10-14","expected":{"amount":250000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-073","transcript":"Charger 65k","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":65000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-074","transcript":"Beli buku 90 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":90000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-075","transcript":"Case hp 35 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":35000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-076","transcript":"Jam tangan 450 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":450000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-077","transcript":"Sandal 60k","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":60000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-078","transcript":"Beli laptop 8,5 juta","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":8500000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-079","transcript":"Skincare 180 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":180000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-080","transcript":"Parfum 320 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":320000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-081","transcript":"Potong rambut 35 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":35000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-082","transcript":"Laundry 40 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":40000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-083","transcript":"Obat flu 18 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":18000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-084","transcript":"Periksa ke dokter 200 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":200000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-085","transcript":"Vitamin C 45 ribu","slice":"hard","spokenOn":"2026-10-14","expected":{"amount":45000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-086","transcript":"Masker 20 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":20000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-087","transcript":"Cek gigi 350 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":350000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-088","transcript":"Obat sakit kepala 8 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":8000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-089","transcript":"Fitness bulanan 250 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":250000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-090","transcript":"Nonton bioskop 50 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":50000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-091","transcript":"Tiket konser 750 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":750000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-092","transcript":"Top up game 100k","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":100000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-093","transcript":"Karaoke bareng teman 120 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":120000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-094","transcript":"Kado ulang tahun 150 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":150000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-095","transcript":"Sumbangan masjid 50 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":50000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-096","transcript":"Kondangan 100 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":100000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-097","transcript":"Beli kopi buat teman 40 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":40000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-098","transcript":"Patungan makan 75 ribu","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":75000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-099","transcript":"Traktir teman 200k","slice":"clear","spokenOn":"2026-10-14","expected":{"amount":200000,"currency":"IDR","category":"food","merchant":null,"date":null}}
+{"id":"ex-100","transcript":"Bayar tukang cukur dua puluh lima ribu","slice":"hard","spokenOn":"2026-10-14","expected":{"amount":25000,"currency":"IDR","category":"food","merchant":null,"date":null}}
