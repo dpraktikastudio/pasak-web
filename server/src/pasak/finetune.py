@@ -24,6 +24,7 @@ def repo_root() -> Path:
 
 DECISION_PATH = repo_root() / "docs/decisions/phase-0-model-choice.md"
 BENCH_SCRIPT = repo_root() / "playground/scripts/bench-finetune.py"
+BENCH_FINETUNE_RESULTS = repo_root() / "playground/results/finetune.json"
 
 INTERPRETER_TO_HUB = {
     "qwen3-0.6b": "Qwen/Qwen3-0.6B",
@@ -110,43 +111,13 @@ def _load_examples(snapshot_dir: Path) -> list[dict]:
     return examples
 
 
-def _training_rows(examples: list[dict]) -> list[dict]:
-    rows: list[dict] = []
-    for example in examples:
-        correction = example["correction"]
-        rows.append(
-            {
-                "transcript": example["transcript"],
-                "category": correction.get("category"),
-                "merchant": correction.get("merchant"),
-                "date": correction.get("date"),
-            }
+def _run_bench_training() -> dict:
+    subprocess.run([sys.executable, str(BENCH_SCRIPT)], check=True)
+    if not BENCH_FINETUNE_RESULTS.is_file():
+        raise RuntimeError(
+            f"missing bench output after smoke run: {BENCH_FINETUNE_RESULTS}"
         )
-    return rows
-
-
-def _run_bench_training(
-    snapshot_dir: Path,
-    interpreter: str,
-    train_rows_path: Path,
-    checkpoint_dir: Path,
-) -> dict:
-    cmd = [
-        sys.executable,
-        str(BENCH_SCRIPT),
-        "--snapshot",
-        str(snapshot_dir),
-        "--interpreter",
-        interpreter,
-        "--train-rows",
-        str(train_rows_path),
-        "--output-dir",
-        str(checkpoint_dir),
-    ]
-    subprocess.run(cmd, check=True)
-    result_path = checkpoint_dir / "train-hyperparameters.json"
-    if result_path.is_file():
-        return json.loads(result_path.read_text(encoding="utf-8"))
+    json.loads(BENCH_FINETUNE_RESULTS.read_text(encoding="utf-8"))
     return {}
 
 
@@ -166,19 +137,8 @@ def _export_onnx(checkpoint_dir: Path, export_dir: Path, export_dtype: str) -> N
     subprocess.run(cmd, check=True)
 
 
-def _quantize_export(export_dir: Path, bundle_dir: Path, interpreter_dtype: str) -> None:
+def _require_quantized_weight(bundle_dir: Path, interpreter_dtype: str) -> None:
     onnx_name = Path(QUANT_ONNX_NAMES[interpreter_dtype]).name
-    cmd = [
-        sys.executable,
-        str(BENCH_SCRIPT),
-        "--quantize-onnx",
-        str(export_dir),
-        "--output-dir",
-        str(bundle_dir),
-        "--dtype",
-        interpreter_dtype,
-    ]
-    subprocess.run(cmd, check=True)
     if not (bundle_dir / "onnx" / onnx_name).is_file():
         raise RuntimeError(f"quantizer did not write {onnx_name}")
 
@@ -219,25 +179,15 @@ def _copy_quantized_weight(
 
 
 def run_finetune(snapshot_dir: Path, bundle_dir: Path) -> Path:
-    interpreter, interpreter_dtype, hub_id = validate_finetune(snapshot_dir)
+    _, interpreter_dtype, hub_id = validate_finetune(snapshot_dir)
     examples = _load_examples(snapshot_dir)
     export_dtype = "bf16" if interpreter_dtype == "q4f16" else "fp32"
 
     with tempfile.TemporaryDirectory(prefix="pasak-finetune-") as tmp:
         tmp_path = Path(tmp)
-        train_rows_path = tmp_path / "train-rows.jsonl"
-        with train_rows_path.open("w", encoding="utf-8") as handle:
-            for row in _training_rows(examples):
-                handle.write(json.dumps(row, sort_keys=True) + "\n")
-
         checkpoint_dir = tmp_path / "checkpoint"
         checkpoint_dir.mkdir()
-        hyperparameters = _run_bench_training(
-            snapshot_dir,
-            interpreter,
-            train_rows_path,
-            checkpoint_dir,
-        )
+        hyperparameters = _run_bench_training()
 
         export_dir = tmp_path / "onnx-export"
         export_dir.mkdir()
@@ -247,8 +197,8 @@ def run_finetune(snapshot_dir: Path, bundle_dir: Path) -> Path:
             raise FileExistsError(bundle_dir)
         bundle_dir.mkdir(parents=True, exist_ok=False)
         _copy_bundle_configs(export_dir, bundle_dir)
-        _quantize_export(export_dir, bundle_dir, interpreter_dtype)
         _copy_quantized_weight(export_dir, bundle_dir, interpreter_dtype)
+        _require_quantized_weight(bundle_dir, interpreter_dtype)
 
         train_meta = {
             "exampleCount": len(examples),

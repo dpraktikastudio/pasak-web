@@ -40,10 +40,11 @@ afterEach(() => {
 });
 
 describe("completeInterpreter", () => {
-  test("rules-only with null active skips and does not call pipeline", async () => {
+  test("null active loads local interpreter from phase-0 choice", async () => {
     await putMeta("activeVersions", { whisper: null, interpreter: null });
-    await expect(completeInterpreter("kopi 15 ribu")).rejects.toThrow(/rules-only/);
-    expect(pipeline).not.toHaveBeenCalled();
+    pipeline.mockResolvedValue(stubGen());
+    await completeInterpreter("kopi 15 ribu");
+    expect(pipeline).toHaveBeenCalled();
   });
 
   test("active interpreter assigns env immediately before pipeline", async () => {
