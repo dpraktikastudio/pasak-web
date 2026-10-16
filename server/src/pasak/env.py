@@ -8,7 +8,7 @@ _LOADED = False
 
 
 def load_local_env() -> None:
-    """Fill os.environ from server/.env. Does not override vars already set."""
+    """Load server/.env into os.environ (overrides). Skip under pytest."""
     global _LOADED
     if _LOADED:
         return
@@ -27,5 +27,5 @@ def load_local_env() -> None:
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
             value = value[1:-1]
-        if key and key not in os.environ:
+        if key:
             os.environ[key] = value

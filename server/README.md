@@ -17,7 +17,7 @@ Python **3.12** (`requires-python = ">=3.12,<3.13"`). Do not install this packag
 
 `CORS_ORIGINS` must list the SPA origin. Example is `http://127.0.0.1:4173` (`vite preview`). `vite dev` (5173) is a different origin.
 
-Copy `.env.example` to `.env` (gitignored). `uvicorn` and `python -m pasak.admin` load that file automatically. Existing process env vars win over `.env`. pytest does not load it.
+Copy `.env.example` to `.env` (gitignored). `uvicorn` and `python -m pasak.admin` load that file on start (`.env` overrides the process env). pytest does not load it. Startup runs SQL in `pasak/migrations/` against `DATABASE_URL` before serving. Logs `startup migrate host:port/db` (no password).
 
 ## Postgres
 

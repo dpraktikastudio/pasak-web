@@ -1,5 +1,7 @@
+import logging
 import os
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -9,6 +11,7 @@ from pasak.db import apply_migrations, connect
 from pasak.env import load_local_env
 
 load_local_env()
+log = logging.getLogger("uvicorn.error")
 
 FAMILIES = ("whisper", "interpreter")
 
@@ -20,9 +23,18 @@ def cors_origins() -> list[str]:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    raw = os.environ.get("DATABASE_URL", "")
+    parsed = urlparse(raw)
+    log.warning(
+        "startup migrate %s:%s%s",
+        parsed.hostname,
+        parsed.port,
+        parsed.path,
+    )
     conn = connect()
     try:
         apply_migrations(conn)
+        conn.commit()
     finally:
         conn.close()
     yield
