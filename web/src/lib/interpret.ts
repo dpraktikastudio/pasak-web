@@ -20,11 +20,13 @@ const THINKING_FALLBACK_LINE =
 
 function userPrompt(transcript: string, extra?: string): string {
   let text =
-    "Extract category, merchant, and date from the utterance. " +
-    'Reply with one JSON object and nothing else: {"category":"...","merchant":null,"date":null}. ' +
+    "Extract category, item, merchant, and date from the utterance. " +
+    'Reply with one JSON object and nothing else: {"category":"...","item":null,"merchant":null,"date":null}. ' +
     "Do not include amount or currency. " +
     "category must be one of food, transport, bills, shopping, health, other. " +
-    "merchant is a string or null. date is YYYY-MM-DD or null.\n\n" +
+    "item is what was bought (e.g. bakso, kopi), string or null — not the store name. " +
+    "merchant is the vendor or place (e.g. warteg, Indomaret), string or null. " +
+    "date is YYYY-MM-DD or null.\n\n" +
     `Utterance: ${transcript}`;
   if (extra) text += `\n${extra}`;
   return text;

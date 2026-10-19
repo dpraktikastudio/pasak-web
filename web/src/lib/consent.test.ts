@@ -18,6 +18,7 @@ const fields = {
   amount: 15000,
   currency: "IDR",
   category: "food" as const,
+  item: null,
   merchant: null,
   date: "2026-10-10",
 };

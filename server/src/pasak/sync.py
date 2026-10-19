@@ -25,7 +25,7 @@ TOP_LEVEL_KEYS = frozenset(
     }
 )
 EXPENSE_FIELD_KEYS = frozenset(
-    {"amount", "currency", "category", "merchant", "date"}
+    {"amount", "currency", "category", "item", "merchant", "date"}
 )
 CATEGORIES = frozenset(
     {"food", "transport", "bills", "shopping", "health", "other"}
@@ -168,6 +168,9 @@ def _validate_expense_fields(raw: Any) -> dict:
         raise _bad_shape()
     category = raw["category"]
     if category is not None and category not in CATEGORIES:
+        raise _bad_shape()
+    item = raw["item"]
+    if item is not None and not isinstance(item, str):
         raise _bad_shape()
     merchant = raw["merchant"]
     if merchant is not None and not isinstance(merchant, str):

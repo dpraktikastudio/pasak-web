@@ -23,8 +23,8 @@ CATEGORIES = frozenset(
 )
 SLICES = frozenset({"clear", "hard"})
 EVAL_KEYS = ("id", "transcript", "slice", "spokenOn", "expected")
-EXPECTED_KEYS = ("amount", "currency", "category", "merchant", "date")
-PREDICTION_KEYS = ("amount", "currency", "category", "merchant", "date")
+EXPECTED_KEYS = ("amount", "currency", "category", "item", "merchant", "date")
+PREDICTION_KEYS = ("amount", "currency", "category", "item", "merchant", "date")
 
 CLEAR_AMOUNT_FLOOR = 0.98
 OVERALL_AMOUNT_FLOOR = 0.90
@@ -63,10 +63,11 @@ def _validate_expected(expected: object) -> str | None:
     if expected is None or not isinstance(expected, dict) or isinstance(expected, list):
         return "expected must be an object"
     if not _same_keys(expected, EXPECTED_KEYS):
-        return "expected keys must be amount, currency, category, merchant, date"
+        return "expected keys must be amount, currency, category, item, merchant, date"
     amount = expected["amount"]
     currency = expected["currency"]
     category = expected["category"]
+    item = expected["item"]
     merchant = expected["merchant"]
     date = expected["date"]
     if amount is not None and not _is_int(amount):
@@ -78,6 +79,8 @@ def _validate_expected(expected: object) -> str | None:
         return "currency must be IDR when amount is an integer"
     if category is not None and category not in CATEGORIES:
         return "category must be food, transport, bills, shopping, health, or other"
+    if item is not None and not isinstance(item, str):
+        return "item must be a string or null"
     if merchant is not None and not isinstance(merchant, str):
         return "merchant must be a string or null"
     if date is not None and not _is_iso_date(date):
@@ -214,6 +217,7 @@ def _empty_prediction() -> dict[str, Any]:
         "amount": None,
         "currency": None,
         "category": None,
+        "item": None,
         "merchant": None,
         "date": None,
     }
@@ -236,6 +240,7 @@ def _resolve_prediction(
         resolved["amount"] = norm["amount"]
         resolved["currency"] = norm["currency"]
     resolved["category"] = row.get("category")
+    resolved["item"] = row.get("item")
     resolved["merchant"] = row.get("merchant")
     resolved["date"] = row.get("date")
     return resolved
@@ -329,6 +334,7 @@ function parseFields(text) {
     if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
     return {
       category: obj.category ?? null,
+      item: obj.item ?? null,
       merchant: obj.merchant ?? null,
       date: obj.date ?? null,
     };
@@ -351,13 +357,14 @@ for (const example of examples) {
     fields = parseFields(raw);
   }
   if (!fields) {
-    fields = { category: null, merchant: null, date: null };
+    fields = { category: null, item: null, merchant: null, date: null };
   }
   out.push({
     id: example.id,
     amount: normalized.amount,
     currency: normalized.currency,
     category: fields.category,
+    item: fields.item,
     merchant: fields.merchant,
     date: fields.date,
   });

@@ -7,7 +7,7 @@ Weights are **not in git**. They live in repo `models/` (gitignored). Phase 0 `s
 ## What it does
 
 - Record (press-and-hold), silence stop, 16 kHz PCM, no `MediaRecorder`
-- `normalizeAmount` / `resolveDate`; interpreter skipped while Phase 0 is `rules-only`
+- `normalizeAmount` / `resolveDate`; optional on-device interpreter when `docs/decisions/phase-0-model-choice.md` names a model (not `rules-only`) and `interpreter_dir` exists under repo `models/`
 - IndexedDB `pasak`: `expenses` plus `meta` (`activeVersions` / `pendingVersions`)
 - Production only: service worker (`/sw.js`) caches the shell, `/models/`, `/ort/`, and (Phase 2) `pasak-models`
 - Optional: `VITE_MANIFEST_URL` → fetch FastAPI manifest, download files from `baseUrl`, apply on **next** load

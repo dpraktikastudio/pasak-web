@@ -4,7 +4,14 @@ import { transcribeThenExtract } from "./pipeline";
 describe("transcribeThenExtract", () => {
   test("amount and currency come from normalizeAmount, not interpreter", async () => {
     const interpret = vi.fn(async () =>
-      JSON.stringify({ category: "food", merchant: null, date: null, amount: 1, currency: "USD" }),
+      JSON.stringify({
+        category: "food",
+        item: null,
+        merchant: null,
+        date: null,
+        amount: 1,
+        currency: "USD",
+      }),
     );
     const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
       todayLocalIso: "2026-10-10",
@@ -22,7 +29,8 @@ describe("transcribeThenExtract", () => {
     const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
       todayLocalIso: "2026-10-10",
       transcribe: async () => "kemarin kopi 15 ribu",
-      interpret: async () => JSON.stringify({ category: "food", merchant: null, date: "2020-01-01" }),
+      interpret: async () =>
+        JSON.stringify({ category: "food", item: null, merchant: null, date: "2020-01-01" }),
       rulesOnly: false,
     });
     expect(out.prediction.date).toBe("2026-10-09");
@@ -32,7 +40,8 @@ describe("transcribeThenExtract", () => {
     const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
       todayLocalIso: "2026-10-10",
       transcribe: async () => "kopi 15 ribu",
-      interpret: async () => JSON.stringify({ category: "food", merchant: null, date: "2026-10-12" }),
+      interpret: async () =>
+        JSON.stringify({ category: "food", item: null, merchant: null, date: "2026-10-12" }),
       rulesOnly: false,
     });
     expect(out.prediction.date).toBe("2026-10-12");
@@ -42,7 +51,8 @@ describe("transcribeThenExtract", () => {
     const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
       todayLocalIso: "2026-10-10",
       transcribe: async () => "kopi 15 ribu",
-      interpret: async () => JSON.stringify({ category: "food", merchant: null, date: "2026-02-31" }),
+      interpret: async () =>
+        JSON.stringify({ category: "food", item: null, merchant: null, date: "2026-02-31" }),
       rulesOnly: false,
     });
     expect(out.prediction.date).toBe(null);
@@ -52,7 +62,7 @@ describe("transcribeThenExtract", () => {
   test("a second JSON value is retried once; category stays null", async () => {
     const interpret = vi.fn(
       async () =>
-        '{"category":"food","merchant":null,"date":null}{"category":"other","merchant":null,"date":null}',
+        '{"category":"food","item":null,"merchant":null,"date":null}{"category":"other","item":null,"merchant":null,"date":null}',
     );
     const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
       todayLocalIso: "2026-10-10",
@@ -85,7 +95,9 @@ describe("transcribeThenExtract", () => {
   });
 
   test("rules-only never calls the interpreter", async () => {
-    const interpret = vi.fn(async () => JSON.stringify({ category: "food", merchant: "x", date: null }));
+    const interpret = vi.fn(async () =>
+      JSON.stringify({ category: "food", item: "x", merchant: "x", date: null }),
+    );
     const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
       todayLocalIso: "2026-10-10",
       transcribe: async () => "beli kopi 15 ribu",
@@ -95,7 +107,39 @@ describe("transcribeThenExtract", () => {
     expect(interpret).not.toHaveBeenCalled();
     expect(out.prediction.category).toBe(null);
     expect(out.prediction.merchant).toBe(null);
+    expect(out.prediction.item).toBe("Kopi");
     expect(out.prediction.amount).toBe(15000);
+  });
+
+  test("rules-only extracts item from transcript", async () => {
+    const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
+      todayLocalIso: "2026-10-10",
+      transcribe: async () => "makan bakso 15 ribu",
+      rulesOnly: true,
+    });
+    expect(out.prediction.item).toBe("Bakso");
+  });
+
+  test("interpreter item wins over rules", async () => {
+    const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
+      todayLocalIso: "2026-10-10",
+      transcribe: async () => "makan bakso 15 ribu",
+      interpret: async () =>
+        JSON.stringify({ category: "food", item: "FromModel", merchant: null, date: null }),
+      rulesOnly: false,
+    });
+    expect(out.prediction.item).toBe("FromModel");
+  });
+
+  test("null interpreter item falls back to rules", async () => {
+    const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
+      todayLocalIso: "2026-10-10",
+      transcribe: async () => "makan bakso 15 ribu",
+      interpret: async () =>
+        JSON.stringify({ category: "food", item: null, merchant: null, date: null }),
+      rulesOnly: false,
+    });
+    expect(out.prediction.item).toBe("Bakso");
   });
 
   test("non-mono buffer is rejected", async () => {

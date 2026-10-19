@@ -18,6 +18,7 @@ def _expected(
         "amount": amount,
         "currency": "IDR" if amount is not None else None,
         "category": category,
+        "item": None,
         "merchant": None,
         "date": None,
     }
@@ -63,6 +64,7 @@ def _matching_predictions(golden: list[dict]) -> list[dict]:
                 "amount": exp["amount"],
                 "currency": exp["currency"],
                 "category": exp["category"],
+                "item": exp["item"],
                 "merchant": exp["merchant"],
                 "date": exp["date"],
             }
@@ -143,7 +145,8 @@ def test_fails_when_category_ties_rules_baseline(tmp_path, monkeypatch):
                 "amount": row["expected"]["amount"],
                 "currency": row["expected"]["currency"],
                 "category": None,
-                "merchant": None,
+                "item": None,
+        "merchant": None,
                 "date": None,
             }
         )

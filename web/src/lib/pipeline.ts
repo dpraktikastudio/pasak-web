@@ -1,5 +1,6 @@
 import { normalizeAmount } from "./amount";
 import { resolveDate } from "./dates";
+import { extractItem } from "./item";
 import { completeInterpreter } from "./interpret";
 import { interpreterIsRulesOnly } from "./modelChoice";
 import { transcribePcm } from "./stt";
@@ -13,7 +14,7 @@ const CATEGORIES = new Set<Category>([
   "health",
   "other",
 ]);
-const INTERPRETER_KEYS = ["category", "merchant", "date"];
+const INTERPRETER_KEYS = ["category", "item", "merchant", "date"];
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export type ExtractOptions = {
@@ -77,11 +78,19 @@ export function validateInterpreterText(text: string): string | null {
     return "interpreter output must be one JSON object";
   }
   if (!sameKeys(parsed, INTERPRETER_KEYS)) {
-    return "interpreter keys must be exactly category, merchant, date";
+    return "interpreter keys must be exactly category, item, merchant, date";
   }
-  const obj = parsed as { category: unknown; merchant: unknown; date: unknown };
+  const obj = parsed as {
+    category: unknown;
+    item: unknown;
+    merchant: unknown;
+    date: unknown;
+  };
   if (typeof obj.category !== "string" || !CATEGORIES.has(obj.category as Category)) {
     return "category must be food, transport, bills, shopping, health, or other";
+  }
+  if (obj.item !== null && typeof obj.item !== "string") {
+    return "item must be a string or null";
   }
   if (obj.merchant !== null && typeof obj.merchant !== "string") {
     return "merchant must be a string or null";
@@ -94,17 +103,20 @@ export function validateInterpreterText(text: string): string | null {
 
 function parseInterpreter(text: string): {
   category: Category | null;
+  item: string | null;
   merchant: string | null;
   date: string | null;
 } | null {
   if (validateInterpreterText(text)) return null;
   const obj = JSON.parse(text.trim()) as {
     category: Category;
+    item: string | null;
     merchant: string | null;
     date: string | null;
   };
+  const item = obj.item === "" ? null : obj.item;
   const merchant = obj.merchant === "" ? null : obj.merchant;
-  return { category: obj.category, merchant, date: obj.date };
+  return { category: obj.category, item, merchant, date: obj.date };
 }
 
 export async function transcribeThenExtract(
@@ -123,8 +135,10 @@ export async function transcribeThenExtract(
   const transcript = await transcribe(audio, 16000, options.onProgress);
   const money = normalizeAmount(transcript);
   const resolved = resolveDate(transcript, options.todayLocalIso);
+  const rulesItem = extractItem(transcript);
 
   let category: Category | null = null;
+  let item: string | null = rulesItem;
   let merchant: string | null = null;
   let interpreterDate: string | null = null;
 
@@ -142,6 +156,7 @@ export async function transcribeThenExtract(
       category = parsed.category;
       merchant = parsed.merchant;
       interpreterDate = parsed.date;
+      item = parsed.item ?? rulesItem;
     }
   }
 
@@ -156,6 +171,7 @@ export async function transcribeThenExtract(
       amount: money.amount,
       currency: money.currency,
       category,
+      item,
       merchant,
       date,
     },

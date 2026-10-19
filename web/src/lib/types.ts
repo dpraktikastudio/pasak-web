@@ -4,6 +4,7 @@ export type ExpenseFields = {
   amount: number | null;
   currency: string | null;
   category: Category | null;
+  item: string | null;
   merchant: string | null;
   date: string | null;
 };

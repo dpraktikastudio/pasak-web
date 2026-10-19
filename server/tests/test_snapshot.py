@@ -40,6 +40,7 @@ def _sample_example_body(install_id: str) -> dict:
             "amount": 15000,
             "currency": "IDR",
             "category": None,
+            "item": None,
             "merchant": None,
             "date": None,
         },
@@ -47,6 +48,7 @@ def _sample_example_body(install_id: str) -> dict:
             "amount": 15000,
             "currency": "IDR",
             "category": "food",
+            "item": None,
             "merchant": None,
             "date": "2026-10-10",
         },
@@ -136,8 +138,8 @@ def test_jsonl_sorted_keys_trailing_newline_and_snapshot_metadata(db, tmp_path):
             )
             VALUES (
               %s::uuid, %s::uuid, 'hello',
-              '{"amount": 1, "currency": "IDR", "category": "food", "merchant": null, "date": null}'::jsonb,
-              '{"amount": 1, "currency": "IDR", "category": "food", "merchant": null, "date": "2026-10-10"}'::jsonb,
+              '{"amount": 1, "currency": "IDR", "category": "food", "item": null, "merchant": null, "date": null}'::jsonb,
+              '{"amount": 1, "currency": "IDR", "category": "food", "item": null, "merchant": null, "date": "2026-10-10"}'::jsonb,
               '{"stt": "whisper@1.0.1", "interpreter": null}'::jsonb
             )
             """,
