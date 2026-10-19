@@ -182,6 +182,20 @@ def test_cors_other_origin_omitted_on_post_consent(client):
     assert "access-control-allow-origin" not in response.headers
 
 
+def test_cors_preflight_delete_consent(client):
+    install_id = str(uuid.uuid4())
+    response = client.options(
+        f"/v1/consent/{install_id}",
+        headers={
+            "Origin": WEB_ORIGIN,
+            "Access-Control-Request-Method": "DELETE",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == WEB_ORIGIN
+    assert "DELETE" in (response.headers.get("access-control-allow-methods") or "")
+
+
 def _sample_example_body(install_id: str) -> dict:
     return {
         "installId": install_id,
