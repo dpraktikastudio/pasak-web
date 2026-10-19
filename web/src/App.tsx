@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { startPushToTalk } from "./lib/audio";
+import { canSync, isConsentGranted, optIn, revokeConsent, syncCorrection } from "./lib/consent";
 import { listExpenses, putExpense, saveCorrection } from "./lib/db";
 import { localTodayIso } from "./lib/dates";
 import { interpreterVersionLabel, modelChoice, sttVersionLabel } from "./lib/modelChoice";
@@ -46,6 +47,8 @@ export function App() {
   });
   const [dateTouched, setDateTouched] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [consentGranted, setConsentGranted] = useState(false);
+  const [consentBusy, setConsentBusy] = useState(false);
   const [clipUrl, setClipUrl] = useState<string | null>(null);
   const session = useRef<ReturnType<typeof startPushToTalk> | null>(null);
   const savingRef = useRef(false);
@@ -59,6 +62,7 @@ export function App() {
 
   useEffect(() => {
     void reload();
+    void isConsentGranted().then(setConsentGranted);
   }, []);
 
   useEffect(() => {
@@ -170,6 +174,48 @@ export function App() {
         if (next.length > 80) next.shift();
       },
     });
+  }
+
+  async function onOptIn() {
+    setConsentBusy(true);
+    try {
+      await optIn();
+      setConsentGranted(true);
+      setStatus("");
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Opt-in failed.");
+    } finally {
+      setConsentBusy(false);
+    }
+  }
+
+  async function onSyncRow(row: ExpenseRecord) {
+    setConsentBusy(true);
+    try {
+      const result = await syncCorrection(row);
+      if (result.error) setStatus(result.error);
+      else setStatus("");
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Sync failed.");
+    } finally {
+      setConsentBusy(false);
+    }
+  }
+
+  async function onRevoke() {
+    setConsentBusy(true);
+    try {
+      const result = await revokeConsent();
+      if (result.error) setStatus(result.error);
+      else {
+        setConsentGranted(false);
+        setStatus("");
+      }
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Revoke failed.");
+    } finally {
+      setConsentBusy(false);
+    }
   }
 
   async function onSave() {
@@ -320,6 +366,21 @@ export function App() {
           <button type="button" disabled={!canSave} onClick={() => void onSave()}>
             Save
           </button>
+          <p>
+            <button type="button" disabled={consentBusy} onClick={() => void onOptIn()}>
+              opt in
+            </button>{" "}
+            <button
+              type="button"
+              disabled={consentBusy || !canSync(draft, consentGranted)}
+              onClick={() => void onSyncRow(draft)}
+            >
+              sync this correction
+            </button>{" "}
+            <button type="button" disabled={consentBusy} onClick={() => void onRevoke()}>
+              revoke
+            </button>
+          </p>
         </section>
       ) : null}
 
@@ -355,6 +416,21 @@ export function App() {
                         ))}
                       </tbody>
                     </table>
+                    <p>
+                      <button type="button" disabled={consentBusy} onClick={() => void onOptIn()}>
+                        opt in
+                      </button>{" "}
+                      <button
+                        type="button"
+                        disabled={consentBusy || !canSync(row, consentGranted)}
+                        onClick={() => void onSyncRow(row)}
+                      >
+                        sync this correction
+                      </button>{" "}
+                      <button type="button" disabled={consentBusy} onClick={() => void onRevoke()}>
+                        revoke
+                      </button>
+                    </p>
                   </div>
                 ) : null}
               </li>

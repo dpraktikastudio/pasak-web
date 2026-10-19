@@ -87,7 +87,7 @@ Exit: a new model version can be published, promoted and rolled back without red
 
 - Consent records, the sync endpoint, personal-data scrubbing, and the `training_examples` table.
 - Dataset snapshots and a first manual fine-tune of the interpreter.
-- Evaluation gate with a versioned eval set, then human-approved promotion **[OPEN: human approval or automatic]**.
+- Evaluation gate with a versioned eval set, then human-approved promotion.
 
 Exit: one model trained from real corrections has passed the gate and been delivered to clients.
 
@@ -95,7 +95,7 @@ Exit: one model trained from real corrections has passed the gate and been deliv
 
 - Worker loop for scheduled fine-tune, eval and export jobs.
 - Regression monitoring and a deletion-request runbook.
-- Retention policy **[OPEN: duration]** and scrubbing rules **[OPEN]**.
+- Retention policy **[OPEN: duration]**. Scrubbing rules v1 are decided in Phase 3.
 
 Exit: the loop runs without manual steps except approval, and a deletion request can be fulfilled end to end.
 
@@ -106,9 +106,10 @@ Ideas that are not committed: more languages, multi-device sync, an opt-in serve
 ## Open decisions
 
 - Interpreter model: Qwen3-0.6B or Gemma 3 270M, decided by the Phase 0 comparison. Also whether the model is needed at all beyond a rules-based parser, and the licensing terms for redistributing fine-tuned Gemma weights from our own CDN **[VERIFY]**.
-- Promotion: human approval or automatic after a passing eval.
+- Promotion: human approval. A person runs the Phase 2 `promote` command after reading the eval report. A passing eval does not promote by itself. Automatic promotion is not this phase.
 - Model path layout: objects live at `models/{family}/{version}/` (`family` is `whisper` or `interpreter`); the manifest lists file paths and sha256; the client overrides Transformers.js's URL template.
-- Retention period and scrubbing rules. Amount accuracy is decided: see Phase 0 and the Phase 1 exit.
+- Scrubbing rules v1 (closed): reject request if any object at any depth has a key exactly `audio`, `wav`, `blob`, `pcm`, or `recording`; reject email and phone in `transcript`, `prediction`, and `correction`; redact contiguous digit runs of 13 or more in those fields; deletion is by revoke.
+- Retention duration **[OPEN]**. Shipped behavior is until revoke. Amount accuracy is decided: see Phase 0 and the Phase 1 exit.
 - Project name and repository layout.
 
 ## Amendments

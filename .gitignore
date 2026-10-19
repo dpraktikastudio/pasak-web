@@ -1,5 +1,7 @@
 models/
 playground/
+server/var
+server/var/
 backend/data/
 backend/.cache/
 backend/results/
