@@ -20,6 +20,15 @@ type CardWarmup =
   | { active: true; label: string; loaded: number; total?: number }
   | { active: false };
 
+function formatModelSize(downloadedBytes: number | null, totalBytes: number | null): string {
+  if (downloadedBytes == null) return "—";
+  if (totalBytes != null && totalBytes > downloadedBytes) {
+    return `${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)}`;
+  }
+  if (totalBytes != null) return formatBytes(totalBytes);
+  return formatBytes(downloadedBytes);
+}
+
 function modelVersionSubtitle(status: FamilyModelStatus): string | null {
   if (status.kind === "bundled") {
     return `${status.modelName} (${status.modelVersion})`;
@@ -161,6 +170,10 @@ function ModelFamilyCard({
             </dd>
           </div>
           <div className="status-card__row">
+            <dt>Size</dt>
+            <dd>{formatModelSize(status.downloadedBytes, null)}</dd>
+          </div>
+          <div className="status-card__row">
             <dt>Cached</dt>
             <dd>
               <span className={badgeClass(cached, !cached)}>{cachedLabel}</span>
@@ -206,6 +219,14 @@ function ModelFamilyCard({
                 {status.filesVerified}/{status.totalFiles} files
               </span>
             )}
+          </dd>
+        </div>
+        <div className="status-card__row">
+          <dt>Size</dt>
+          <dd>
+            {status.verificationUnknown
+              ? "—"
+              : formatModelSize(status.downloadedBytes, status.totalBytes)}
           </dd>
         </div>
         <div className="status-card__row">

@@ -406,7 +406,6 @@ export function App() {
               </label>
               <label>
                 Date{" "}
-                {dateUi.unconfirmed ? "(today, unconfirmed — not saved until you change it)" : ""}
                 <input
                   type="date"
                   value={dateUi.value}

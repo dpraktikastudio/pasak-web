@@ -30,6 +30,8 @@ export type BundleCacheVerification = {
   verifiedFiles: number;
   totalFiles: number;
   unknown: boolean;
+  totalBytes: number | null;
+  verifiedBytes: number | null;
 };
 
 type StoredVersions = {
@@ -103,22 +105,54 @@ async function allFilesVerified(bundle: FamilyBundle): Promise<boolean> {
   return v.complete;
 }
 
+async function verifiedCachedBytes(url: string, expectedSha: string): Promise<number | null> {
+  const cache = await caches.open(MODELS_CACHE);
+  const hit = await cache.match(url);
+  if (!hit) return null;
+  const buf = await hit.arrayBuffer();
+  const hex = await sha256Hex(buf);
+  if (hex !== expectedSha.toLowerCase()) return null;
+  return buf.byteLength;
+}
+
 export async function verifyBundleCache(bundle: FamilyBundle | null): Promise<BundleCacheVerification> {
   if (!bundle?.files || bundle.files.length === 0) {
-    return { complete: false, verifiedFiles: 0, totalFiles: 0, unknown: false };
+    return {
+      complete: false,
+      verifiedFiles: 0,
+      totalFiles: 0,
+      unknown: false,
+      totalBytes: null,
+      verifiedBytes: null,
+    };
   }
+  let manifestTotalBytes = 0;
+  let manifestBytesComplete = true;
+  for (const file of bundle.files) {
+    if (typeof file.bytes === "number") manifestTotalBytes += file.bytes;
+    else manifestBytesComplete = false;
+  }
+  const totalBytes = manifestBytesComplete ? manifestTotalBytes : null;
+
   if (typeof caches === "undefined" || typeof crypto === "undefined" || !crypto.subtle) {
     return {
       complete: false,
       verifiedFiles: 0,
       totalFiles: bundle.files.length,
       unknown: true,
+      totalBytes,
+      verifiedBytes: null,
     };
   }
   let verifiedFiles = 0;
+  let verifiedBytes = 0;
   for (const file of bundle.files) {
     const url = joinUrl(bundle.baseUrl, file.path);
-    if (await cachedShaMatches(url, file.sha256)) verifiedFiles += 1;
+    const size = await verifiedCachedBytes(url, file.sha256);
+    if (size !== null) {
+      verifiedFiles += 1;
+      verifiedBytes += size;
+    }
   }
   const totalFiles = bundle.files.length;
   return {
@@ -126,6 +160,8 @@ export async function verifyBundleCache(bundle: FamilyBundle | null): Promise<Bu
     verifiedFiles,
     totalFiles,
     unknown: false,
+    totalBytes,
+    verifiedBytes: verifiedFiles > 0 ? verifiedBytes : null,
   };
 }
 

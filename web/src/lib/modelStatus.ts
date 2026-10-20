@@ -28,6 +28,7 @@ export type FamilyModelStatus =
       modelVersion: string;
       sessionLoaded: boolean;
       originFileCached: boolean | null;
+      downloadedBytes: number | null;
       downloading: boolean;
     }
   | {
@@ -38,6 +39,8 @@ export type FamilyModelStatus =
       cacheComplete: boolean;
       filesVerified: number;
       totalFiles: number;
+      totalBytes: number | null;
+      downloadedBytes: number | null;
       verificationUnknown: boolean;
       needsReload: boolean;
       downloading: boolean;
@@ -132,6 +135,7 @@ export async function getFamilyModelStatus(family: ModelFamily): Promise<FamilyM
       modelVersion,
       sessionLoaded,
       originFileCached,
+      downloadedBytes: null,
       downloading,
     };
   }
@@ -160,6 +164,8 @@ export async function getFamilyModelStatus(family: ModelFamily): Promise<FamilyM
     cacheComplete: verification.complete,
     filesVerified: verification.verifiedFiles,
     totalFiles: verification.totalFiles,
+    totalBytes: verification.totalBytes,
+    downloadedBytes: verification.verifiedBytes,
     verificationUnknown: verification.unknown,
     needsReload,
     downloading,

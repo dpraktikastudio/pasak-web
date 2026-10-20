@@ -281,7 +281,14 @@ describe("verifyBundleCache", () => {
     const cache = await caches.open("pasak-models");
     await cache.put(WHISPER_URL, textResponse(BODY));
     const v = await verifyBundleCache(bundle);
-    expect(v).toEqual({ complete: false, verifiedFiles: 1, totalFiles: 2, unknown: false });
+    expect(v).toEqual({
+      complete: false,
+      verifiedFiles: 1,
+      totalFiles: 2,
+      unknown: false,
+      totalBytes: null,
+      verifiedBytes: BODY.length,
+    });
   });
 });
 

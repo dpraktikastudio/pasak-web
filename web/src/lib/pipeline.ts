@@ -1,5 +1,4 @@
 import { normalizeAmount } from "./amount";
-import { resolveDate } from "./dates";
 import { extractItem } from "./item";
 import { completeInterpreter } from "./interpret";
 import { interpreterIsRulesOnly } from "./modelChoice";
@@ -15,7 +14,6 @@ const CATEGORIES = new Set<Category>([
   "other",
 ]);
 const INTERPRETER_KEYS = ["category", "item", "merchant", "date"];
-const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export type ExtractOptions = {
   todayLocalIso: string;
@@ -33,19 +31,6 @@ export type ExtractOptions = {
 function sameKeys(obj: object, expected: string[]): boolean {
   const keys = Object.keys(obj);
   return keys.length === expected.length && expected.every((k) => keys.includes(k));
-}
-
-function isIsoDate(value: string): boolean {
-  const match = value.match(ISO_DATE_RE);
-  if (!match) return false;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  if (month < 1 || month > 12) return false;
-  const dim = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-  dim[1] = leap ? 29 : 28;
-  return day >= 1 && day <= dim[month - 1];
 }
 
 export function resampleMono(pcm: Float32Array, fromRate: number, toRate: number): Float32Array {
@@ -134,13 +119,11 @@ export async function transcribeThenExtract(
   const transcribe = options.transcribe ?? transcribePcm;
   const transcript = await transcribe(audio, 16000, options.onProgress);
   const money = normalizeAmount(transcript);
-  const resolved = resolveDate(transcript, options.todayLocalIso);
   const rulesItem = extractItem(transcript);
 
   let category: Category | null = null;
   let item: string | null = rulesItem;
   let merchant: string | null = null;
-  let interpreterDate: string | null = null;
 
   const rulesOnly = options.rulesOnly ?? interpreterIsRulesOnly;
   if (!rulesOnly) {
@@ -155,14 +138,8 @@ export async function transcribeThenExtract(
     if (parsed) {
       category = parsed.category;
       merchant = parsed.merchant;
-      interpreterDate = parsed.date;
       item = parsed.item ?? rulesItem;
     }
-  }
-
-  let date = resolved;
-  if (date === null && !rulesOnly && interpreterDate && isIsoDate(interpreterDate)) {
-    date = interpreterDate;
   }
 
   return {
@@ -173,7 +150,7 @@ export async function transcribeThenExtract(
       category,
       item,
       merchant,
-      date,
+      date: options.todayLocalIso,
     },
   };
 }
