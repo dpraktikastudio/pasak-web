@@ -114,7 +114,7 @@ async function probeBundledOriginCache(dir: string): Promise<boolean | null> {
 }
 
 export async function getFamilyModelStatus(family: ModelFamily): Promise<FamilyModelStatus> {
-  const downloading = getFamilyDownloadState(family) === "downloading";
+  const inFlight = getFamilyDownloadState(family) === "downloading";
 
   if (family === "interpreter" && interpreterIsRulesOnly) {
     return { kind: "notApplicable", reason: "Rules only (no on-device model)." };
@@ -129,6 +129,7 @@ export async function getFamilyModelStatus(family: ModelFamily): Promise<FamilyM
     const sessionLoaded = sessionLoadedFor(family);
     const originFileCached = await probeBundledOriginCache(dir);
     const { modelName, modelVersion } = bundledModelIdentity(family);
+    const ready = sessionLoaded || originFileCached === true;
     return {
       kind: "bundled",
       modelName,
@@ -136,7 +137,7 @@ export async function getFamilyModelStatus(family: ModelFamily): Promise<FamilyM
       sessionLoaded,
       originFileCached,
       downloadedBytes: null,
-      downloading,
+      downloading: inFlight && !ready,
     };
   }
 
@@ -168,6 +169,6 @@ export async function getFamilyModelStatus(family: ModelFamily): Promise<FamilyM
     downloadedBytes: verification.verifiedBytes,
     verificationUnknown: verification.unknown,
     needsReload,
-    downloading,
+    downloading: inFlight && !verification.complete,
   };
 }

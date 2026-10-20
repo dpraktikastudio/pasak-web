@@ -70,13 +70,24 @@ async function runWarmup(options?: StartModelWarmupOptions): Promise<void> {
             emit({
               status: "loading",
               family,
-              label: `Downloading ${family} update…`,
+              label: `Downloading ${family}…`,
               loaded: 0,
+              total: undefined,
             });
           }
           if (state === "done" || state === "failed") {
             notifyDeviceStatusRefresh();
           }
+        },
+        onFamilyProgress: (family, loaded, total) => {
+          emit({
+            status: "loading",
+            family,
+            label: `Downloading ${family}…`,
+            loaded,
+            total,
+          });
+          notifyDeviceStatusRefresh();
         },
       });
       await applyPendingVersions();

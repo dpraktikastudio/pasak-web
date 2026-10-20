@@ -19,9 +19,12 @@ export type ModelFamily = "whisper" | "interpreter";
 
 export type FamilyDownloadState = "downloading" | "done" | "failed";
 
-export type CheckForUpdatesOptions = {
+export type FamilyDownloadCallbacks = {
   onFamilyState?: (family: ModelFamily, state: FamilyDownloadState) => void;
+  onFamilyProgress?: (family: ModelFamily, loaded: number, total?: number) => void;
 };
+
+export type CheckForUpdatesOptions = FamilyDownloadCallbacks;
 
 export const MODEL_DELIVERY_EVENT = "pasak-model-delivery";
 
@@ -165,11 +168,36 @@ export async function verifyBundleCache(bundle: FamilyBundle | null): Promise<Bu
   };
 }
 
+function manifestByteTotal(files: ManifestFile[]): number | undefined {
+  if (!files.length) return undefined;
+  let total = 0;
+  for (const file of files) {
+    if (typeof file.bytes !== "number") return undefined;
+    total += file.bytes;
+  }
+  return total;
+}
+
+function finishFamilyDownload(
+  family: Family,
+  callbacks: FamilyDownloadCallbacks | undefined,
+  outcome: FamilyDownloadState,
+): void {
+  if (outcome === "done" || outcome === "failed") {
+    delete downloadState[family];
+  } else {
+    downloadState[family] = outcome;
+  }
+  callbacks?.onFamilyState?.(family, outcome);
+}
+
 async function downloadFamily(
   family: Family,
   entry: FamilyBundle,
-  onFamilyState?: (family: ModelFamily, state: FamilyDownloadState) => void,
+  callbacks?: FamilyDownloadCallbacks,
 ): Promise<void> {
+  const byteTotal = manifestByteTotal(entry.files);
+
   if (await allFilesVerified(entry)) {
     const pending = await readStored(PENDING);
     pending[family] = {
@@ -179,24 +207,33 @@ async function downloadFamily(
     };
     await putMeta(PENDING, pending);
     notifyModelDelivery();
-    downloadState[family] = "done";
-    onFamilyState?.(family, "done");
+    finishFamilyDownload(family, callbacks, "done");
     return;
   }
 
   downloadState[family] = "downloading";
-  onFamilyState?.(family, "downloading");
+  callbacks?.onFamilyState?.(family, "downloading");
+  callbacks?.onFamilyProgress?.(family, 0, byteTotal);
   const cache = await caches.open(MODELS_CACHE);
   const putUrls: string[] = [];
+  let loadedBytes = 0;
   try {
     const verified: { url: string; body: ArrayBuffer; contentType: string }[] = [];
     for (const file of entry.files) {
       const url = joinUrl(entry.baseUrl, file.path);
+      const cachedSize = await verifiedCachedBytes(url, file.sha256);
+      if (cachedSize !== null) {
+        loadedBytes += cachedSize;
+        callbacks?.onFamilyProgress?.(family, loadedBytes, byteTotal);
+        continue;
+      }
       const res = await fetch(url, { mode: "cors", cache: "no-store" });
       if (!res.ok) throw new Error("fetch failed");
       const body = await res.arrayBuffer();
       const hex = await sha256Hex(body);
       if (hex !== file.sha256.toLowerCase()) throw new Error("sha256 mismatch");
+      loadedBytes += body.byteLength;
+      callbacks?.onFamilyProgress?.(family, loadedBytes, byteTotal);
       verified.push({
         url,
         body,
@@ -215,12 +252,10 @@ async function downloadFamily(
     };
     await putMeta(PENDING, pending);
     notifyModelDelivery();
-    downloadState[family] = "done";
-    onFamilyState?.(family, "done");
+    finishFamilyDownload(family, callbacks, "done");
   } catch {
     for (const url of putUrls) await cache.delete(url);
-    downloadState[family] = "failed";
-    onFamilyState?.(family, "failed");
+    finishFamilyDownload(family, callbacks, "failed");
   }
 }
 
@@ -250,10 +285,10 @@ export async function checkForUpdates(manifestUrl: string, options?: CheckForUpd
         files: activeBundle.files?.length ? activeBundle.files : entry.files,
       };
       if (await allFilesVerified(verifyBundle)) continue;
-      await downloadFamily(family, entry, options?.onFamilyState);
+      await downloadFamily(family, entry, options);
       continue;
     }
-    await downloadFamily(family, entry, options?.onFamilyState);
+    await downloadFamily(family, entry, options);
   }
 }
 
