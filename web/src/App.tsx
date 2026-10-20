@@ -4,6 +4,7 @@ import { startPushToTalk } from "./lib/audio";
 import { canSync, isConsentGranted, optIn, revokeConsent, syncCorrection } from "./lib/consent";
 import { listExpenses, PASAK_DATA_CLEARED_EVENT, putExpense, saveCorrection } from "./lib/db";
 import { localTodayIso } from "./lib/dates";
+import type { CaptureProgressSnapshot } from "./lib/captureProgress";
 import { DeviceStatusCards } from "./components/DeviceStatusCards";
 import { modelChoice } from "./lib/modelChoice";
 import { notifyDeviceStatusRefresh } from "./lib/modelStatus";
@@ -70,7 +71,7 @@ export function App() {
   const [rows, setRows] = useState<ExpenseRecord[]>([]);
   const [status, setStatus] = useState("");
   const [holding, setHolding] = useState(false);
-  const [progress, setProgress] = useState<{ loaded: number; total?: number } | null>(null);
+  const [captureProgress, setCaptureProgress] = useState<CaptureProgressSnapshot | null>(null);
   const [draft, setDraft] = useState<ExpenseRecord | null>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -183,7 +184,7 @@ export function App() {
     setBusy(true);
     try {
       const result = await s.stop();
-      setProgress(null);
+      setCaptureProgress(null);
       if (!result.ok) {
         setStatus(result.message);
         return;
@@ -221,7 +222,7 @@ export function App() {
     setHolding(true);
     levelsRef.current = [];
     session.current = startPushToTalk({
-      onProgress: (loaded, total) => setProgress({ loaded, total }),
+      onCaptureStage: setCaptureProgress,
       onLevel: (level) => {
         const next = levelsRef.current;
         next.push(level);
@@ -330,12 +331,31 @@ export function App() {
                 aria-pressed={holding}
                 onClick={onRecordClick}
               >
-                {holding ? "Tap to stop" : busy ? "Transcribing…" : "Tap to record"}
+                {holding
+                  ? "Tap to stop"
+                  : busy
+                    ? (captureProgress?.label ?? "Working…")
+                    : "Tap to record"}
               </button>
-              {busy ? (
+              {busy && captureProgress ? (
+                <div className="transcribe-status" role="status" aria-live="polite" aria-busy="true">
+                  <p className="transcribe-status__row">
+                    <span className="spinner" aria-hidden />
+                    <span>{captureProgress.label}</span>
+                    <span className="capture-step-hint">
+                      Step {captureProgress.step} of {captureProgress.steps}
+                    </span>
+                  </p>
+                  <progress
+                    className="capture-step-bar"
+                    value={captureProgress.step}
+                    max={captureProgress.steps}
+                  />
+                </div>
+              ) : busy ? (
                 <p className="transcribe-status" role="status" aria-live="polite" aria-busy="true">
                   <span className="spinner" aria-hidden />
-                  Transcribing… Whisper can take a while on first load.
+                  Working…
                 </p>
               ) : null}
               <canvas
@@ -346,17 +366,6 @@ export function App() {
                 hidden={!holding}
                 aria-hidden
               />
-              {progress ? (
-                <p className="progress-line">
-                  {progress.total != null ? (
-                    <progress value={progress.loaded} max={progress.total} />
-                  ) : (
-                    <progress />
-                  )}{" "}
-                  {progress.loaded}
-                  {progress.total != null ? ` / ${progress.total}` : " bytes"}
-                </p>
-              ) : null}
               {status ? (
                 <p className="status-message" role="status">
                   {status}

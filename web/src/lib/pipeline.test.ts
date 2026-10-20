@@ -1,7 +1,28 @@
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import * as interpret from "./interpret";
+import * as stt from "./stt";
 import { transcribeThenExtract } from "./pipeline";
 
 describe("transcribeThenExtract", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(stt, "isSttPipelineLoaded").mockReturnValue(true);
+    vi.spyOn(interpret, "isInterpreterPipelineLoaded").mockReturnValue(true);
+  });
+
+  test("onCaptureStage emits transcribing then interpreting with mocks", async () => {
+    const stages: string[] = [];
+    await transcribeThenExtract(new Float32Array(1600), 16000, {
+      todayLocalIso: "2026-10-10",
+      transcribe: async () => "beli kopi",
+      interpret: async () =>
+        JSON.stringify({ category: "food", item: "kopi", merchant: null, date: null }),
+      rulesOnly: false,
+      onCaptureStage: (s) => stages.push(s.stage),
+    });
+    expect(stages).toEqual(["transcribing", "interpreting"]);
+  });
+
   test("amount and currency come from normalizeAmount, not interpreter", async () => {
     const interpret = vi.fn(async () =>
       JSON.stringify({

@@ -1,4 +1,10 @@
 import { normalizeAmount } from "./amount";
+import {
+  emitCaptureStage,
+  planCaptureSteps,
+  type CaptureProgressSnapshot,
+  type CaptureStage,
+} from "./captureProgress";
 import { extractItem } from "./item";
 import { completeInterpreter } from "./interpret";
 import { interpreterIsRulesOnly } from "./modelChoice";
@@ -18,6 +24,7 @@ const INTERPRETER_KEYS = ["category", "item", "merchant", "date"];
 export type ExtractOptions = {
   todayLocalIso: string;
   onProgress?: (loaded: number, total?: number) => void;
+  onCaptureStage?: (snap: CaptureProgressSnapshot) => void;
   transcribe?: (
     pcm: Float32Array,
     sampleRate: number,
@@ -116,8 +123,18 @@ export async function transcribeThenExtract(
     throw new Error("pcm must be mono");
   }
   const audio = sampleRate === 16000 ? pcm : resampleMono(pcm, sampleRate, 16000);
-  const transcribe = options.transcribe ?? transcribePcm;
-  const transcript = await transcribe(audio, 16000, options.onProgress);
+  const rulesOnly = options.rulesOnly ?? interpreterIsRulesOnly;
+  const planned = planCaptureSteps(rulesOnly);
+  const emit = (stage: CaptureStage) => emitCaptureStage(options.onCaptureStage, planned, stage);
+
+  let transcript: string;
+  if (options.transcribe) {
+    if (planned.includes("transcribing")) emit("transcribing");
+    transcript = await options.transcribe(audio, 16000, options.onProgress);
+  } else {
+    transcript = await transcribePcm(audio, 16000, options.onProgress, emit);
+  }
+
   const money = normalizeAmount(transcript);
   const rulesItem = extractItem(transcript);
 
@@ -125,14 +142,20 @@ export async function transcribeThenExtract(
   let item: string | null = rulesItem;
   let merchant: string | null = null;
 
-  const rulesOnly = options.rulesOnly ?? interpreterIsRulesOnly;
   if (!rulesOnly) {
-    const interpret = options.interpret ?? completeInterpreter;
-    let raw = await interpret(transcript);
+    const runInterpret = async (repairError?: string, isRetry = false) => {
+      if (options.interpret) {
+        if (!isRetry && planned.includes("interpreting")) emit("interpreting");
+        return options.interpret(transcript, repairError);
+      }
+      if (isRetry) return completeInterpreter(transcript, repairError);
+      return completeInterpreter(transcript, repairError, { onStage: emit });
+    };
+    let raw = await runInterpret();
     let parsed = parseInterpreter(raw);
     if (!parsed) {
       const err = validateInterpreterText(raw) ?? "invalid json";
-      raw = await interpret(transcript, err);
+      raw = await runInterpret(err, true);
       parsed = parseInterpreter(raw);
     }
     if (parsed) {

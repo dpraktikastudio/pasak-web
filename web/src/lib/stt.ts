@@ -5,6 +5,7 @@ import {
   withInferenceDeviceFallback,
   type InferenceDevice,
 } from "./onnxEnv";
+import type { CaptureStage } from "./captureProgress";
 import { deliveryEnvFor, getActiveVersions, type DeliveryLoad } from "./updates";
 
 type AsrPipe = {
@@ -86,12 +87,15 @@ export async function transcribePcm(
   pcm: Float32Array,
   _sampleRate: number,
   onProgress?: (loaded: number, total?: number) => void,
+  onStage?: (stage: CaptureStage) => void,
 ): Promise<string> {
   const active = await getActiveVersions();
   const delivery = deliveryEnvFor("whisper", active.whisper, modelChoice);
   if (delivery.skip) throw new Error("invalid model ID");
   configureLocalOnnxEnv();
+  if (!isSttPipelineLoaded()) onStage?.("loading_whisper");
   const pipe = await withInferenceDeviceFallback((device) => loadPipe(device, delivery, onProgress));
+  onStage?.("transcribing");
   const out = await pipe(pcm, { language: "indonesian", task: "transcribe" });
   if (typeof out === "string") return out;
   return typeof out?.text === "string" ? out.text : "";

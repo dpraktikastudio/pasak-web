@@ -1,3 +1,4 @@
+import type { CaptureProgressSnapshot } from "./captureProgress";
 import { localTodayIso } from "./dates";
 import { resampleMono, transcribeThenExtract } from "./pipeline";
 import type { ExpenseFields } from "./types";
@@ -91,6 +92,7 @@ function fail(reason: TalkFail["reason"], message: string): TalkFail {
 
 export function startPushToTalk(opts: {
   onProgress?: (loaded: number, total?: number) => void;
+  onCaptureStage?: (snap: CaptureProgressSnapshot) => void;
   onLevel?: (rms: number) => void;
 }): { stop: () => Promise<TalkResult> } {
   let stopped = false;
@@ -190,6 +192,7 @@ export function startPushToTalk(opts: {
         const out = await transcribeThenExtract(resampled, TARGET_RATE, {
           todayLocalIso: localTodayIso(),
           onProgress: opts.onProgress,
+          onCaptureStage: opts.onCaptureStage,
         });
         return {
           ok: true,

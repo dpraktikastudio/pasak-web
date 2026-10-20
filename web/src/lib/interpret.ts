@@ -5,6 +5,7 @@ import {
   withInferenceDeviceFallback,
   type InferenceDevice,
 } from "./onnxEnv";
+import type { CaptureStage } from "./captureProgress";
 import { deliveryEnvFor, getActiveVersions, type DeliveryLoad } from "./updates";
 
 type GenPipe = {
@@ -146,22 +147,29 @@ export async function preloadInterpreter(
   await withInferenceDeviceFallback((device) => loadPipe(device, delivery, onProgress));
 }
 
-export async function completeInterpreter(transcript: string, repairError?: string): Promise<string> {
+export async function completeInterpreter(
+  transcript: string,
+  repairError?: string,
+  opts?: { onStage?: (stage: CaptureStage) => void },
+): Promise<string> {
   const active = await getActiveVersions();
   const delivery = deliveryEnvFor("interpreter", active.interpreter, modelChoice);
   if (delivery.skip) {
     throw new Error("interpreter is rules-only");
   }
   configureLocalOnnxEnv();
+  const emitStage = opts?.onStage;
+  if (!isInterpreterPipelineLoaded()) emitStage?.("loading_interpreter");
   const pipe = await withInferenceDeviceFallback((device) => loadPipe(device, delivery, undefined));
+  emitStage?.("interpreting");
 
   const extra = repairError ? repairError : undefined;
-  const opts: Record<string, unknown> = { max_new_tokens: 256, do_sample: false };
+  const genOpts: Record<string, unknown> = { max_new_tokens: 256, do_sample: false };
   const qwen = modelChoice.interpreter === "qwen3-0.6b";
-  if (qwen) opts.tokenizer_encode_kwargs = { enable_thinking: false };
+  if (qwen) genOpts.tokenizer_encode_kwargs = { enable_thinking: false };
 
   try {
-    const output = await pipe(messagesFor(transcript, extra), opts);
+    const output = await pipe(messagesFor(transcript, extra), genOpts);
     return assistantText(output);
   } catch (err) {
     if (!qwen) throw err;
