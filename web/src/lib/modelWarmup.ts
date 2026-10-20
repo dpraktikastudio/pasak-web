@@ -74,6 +74,9 @@ async function runWarmup(options?: StartModelWarmupOptions): Promise<void> {
               loaded: 0,
             });
           }
+          if (state === "done" || state === "failed") {
+            notifyDeviceStatusRefresh();
+          }
         },
       });
       await applyPendingVersions();

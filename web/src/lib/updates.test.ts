@@ -117,18 +117,21 @@ describe("checkForUpdates", () => {
     expect(fetchMock).toHaveBeenCalledWith(WHISPER_URL, { mode: "cors", cache: "no-store" });
   });
 
-  test("same version string as active does not fetch files or change meta", async () => {
-    const active = versions({ whisper: { version: "1.0.1", baseUrl: BASE } });
+  test("same version string as active does not fetch files when cache is complete", async () => {
+    const bundle = {
+      version: "1.0.1",
+      baseUrl: BASE,
+      files: [{ path: WHISPER_PATH, sha256: GOOD_SHA, bytes: 1 }],
+    };
+    const active = { whisper: bundle, interpreter: null };
     const pending = versions({ interpreter: { version: "0.3.0", baseUrl: BASE } });
     await putMeta("activeVersions", active);
     await putMeta("pendingVersions", pending);
+    const cache = await caches.open("pasak-models");
+    await cache.put(WHISPER_URL, textResponse(BODY));
     const fetchMock = vi.fn(async () =>
       jsonResponse({
-        whisper: {
-          version: "1.0.1",
-          baseUrl: BASE,
-          files: [{ path: "models/whisper/1.0.1/config.json", sha256: GOOD_SHA, bytes: 1 }],
-        },
+        whisper: bundle,
         interpreter: null,
       }),
     );
@@ -139,6 +142,28 @@ describe("checkForUpdates", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(await getMeta("activeVersions")).toEqual(active);
     expect(await getMeta("pendingVersions")).toEqual(pending);
+  });
+
+  test("same version as active re-downloads when cache is incomplete", async () => {
+    const bundle = {
+      version: "1.0.1",
+      baseUrl: BASE,
+      files: [{ path: WHISPER_PATH, sha256: GOOD_SHA, bytes: BODY.length }],
+    };
+    await putMeta("activeVersions", { whisper: bundle, interpreter: null });
+    await putMeta("pendingVersions", empty);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/v1/manifest")) return jsonResponse({ whisper: bundle, interpreter: null });
+      return textResponse(BODY);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await checkForUpdates("http://127.0.0.1:8000/v1/manifest");
+
+    expect(fetchMock).toHaveBeenCalledWith(WHISPER_URL, { mode: "cors", cache: "no-store" });
+    const pending = (await getMeta<{ whisper: { version: string } | null }>("pendingVersions"))!;
+    expect(pending.whisper?.version).toBe("1.0.1");
   });
 
   test("sha256 mismatch does not set pending for that family, deletes partial cache, leaves other pending", async () => {

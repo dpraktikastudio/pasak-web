@@ -242,7 +242,17 @@ export async function checkForUpdates(manifestUrl: string, options?: CheckForUpd
   for (const family of FAMILIES) {
     const entry = manifest[family];
     if (entry == null) continue;
-    if (active[family]?.version === entry.version) continue;
+    const activeBundle = active[family];
+    if (activeBundle?.version === entry.version) {
+      const verifyBundle: FamilyBundle = {
+        version: entry.version,
+        baseUrl: entry.baseUrl,
+        files: activeBundle.files?.length ? activeBundle.files : entry.files,
+      };
+      if (await allFilesVerified(verifyBundle)) continue;
+      await downloadFamily(family, entry, options?.onFamilyState);
+      continue;
+    }
     await downloadFamily(family, entry, options?.onFamilyState);
   }
 }

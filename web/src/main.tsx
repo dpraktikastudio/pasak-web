@@ -2,7 +2,6 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "./index.css";
-import { startModelWarmup } from "./lib/modelWarmup";
 import { applyPendingVersions } from "./lib/updates";
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
@@ -20,10 +19,6 @@ async function boot() {
       <App />
     </StrictMode>,
   );
-  const manifestUrl = import.meta.env.VITE_MANIFEST_URL;
-  void startModelWarmup({
-    manifestUrl: typeof manifestUrl === "string" && manifestUrl.length > 0 ? manifestUrl : undefined,
-  });
 }
 
 void boot();

@@ -6,7 +6,12 @@ import {
   MODEL_DELIVERY_EVENT,
   type FamilyModelStatus,
 } from "../lib/modelStatus";
-import { getWarmupState, MODEL_WARMUP_EVENT, type WarmupState } from "../lib/modelWarmup";
+import {
+  getWarmupState,
+  MODEL_WARMUP_EVENT,
+  startModelWarmup,
+  type WarmupState,
+} from "../lib/modelWarmup";
 import type { ModelFamily } from "../lib/updates";
 import { formatBytes, getPasakStorageStats, type PasakStorageStats } from "../lib/storageStats";
 
@@ -327,21 +332,22 @@ export function DeviceStatusCards() {
       setWarmup(detail);
       if (detail.status === "done" || detail.status === "error") refresh();
     };
-    window.addEventListener(MODEL_WARMUP_EVENT, onWarmup);
-    setWarmup(getWarmupState());
-    return () => window.removeEventListener(MODEL_WARMUP_EVENT, onWarmup);
-  }, [refresh]);
-
-  useEffect(() => {
-    refresh();
     const onRefresh = () => refresh();
+    window.addEventListener(MODEL_WARMUP_EVENT, onWarmup);
     window.addEventListener(MODEL_DELIVERY_EVENT, onRefresh);
     window.addEventListener(DEVICE_STATUS_REFRESH_EVENT, onRefresh);
     const onVis = () => {
       if (document.visibilityState === "visible") refresh();
     };
     document.addEventListener("visibilitychange", onVis);
+    setWarmup(getWarmupState());
+    refresh();
+    const manifestUrl = import.meta.env.VITE_MANIFEST_URL;
+    void startModelWarmup({
+      manifestUrl: typeof manifestUrl === "string" && manifestUrl.length > 0 ? manifestUrl : undefined,
+    });
     return () => {
+      window.removeEventListener(MODEL_WARMUP_EVENT, onWarmup);
       window.removeEventListener(MODEL_DELIVERY_EVENT, onRefresh);
       window.removeEventListener(DEVICE_STATUS_REFRESH_EVENT, onRefresh);
       document.removeEventListener("visibilitychange", onVis);
