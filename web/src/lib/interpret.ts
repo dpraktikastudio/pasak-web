@@ -13,6 +13,10 @@ type GenPipe = {
 };
 
 let cached: { key: string; pipe: GenPipe } | null = null;
+
+export function isInterpreterPipelineLoaded(): boolean {
+  return cached !== null;
+}
 let thinkingFallbackNoted = false;
 
 const THINKING_FALLBACK_LINE =
@@ -90,7 +94,11 @@ function assignEnv(delivery: DeliveryLoad): void {
   if (delivery.localModelPath !== undefined) env.localModelPath = delivery.localModelPath;
 }
 
-async function loadPipe(device: InferenceDevice, delivery: DeliveryLoad): Promise<GenPipe> {
+async function loadPipe(
+  device: InferenceDevice,
+  delivery: DeliveryLoad,
+  onProgress?: (loaded: number, total?: number) => void,
+): Promise<GenPipe> {
   assignEnv(delivery);
   const dtype = modelChoice.interpreter_dtype as "q8" | "q4" | "q4f16";
   const key = `${delivery.modelId}:${dtype}:${device}`;
@@ -106,9 +114,26 @@ async function loadPipe(device: InferenceDevice, delivery: DeliveryLoad): Promis
   const pipe = (await pipeline("text-generation", delivery.modelId, {
     dtype,
     device,
+    progress_callback: onProgress
+      ? (data) => {
+          const info = data as { loaded?: number; total?: number };
+          if (typeof info.loaded === "number") onProgress(info.loaded, info.total);
+        }
+      : undefined,
   })) as unknown as GenPipe;
   cached = { key, pipe };
   return pipe;
+}
+
+export async function preloadInterpreter(
+  onProgress?: (loaded: number, total?: number) => void,
+): Promise<void> {
+  if (isInterpreterPipelineLoaded()) return;
+  const active = await getActiveVersions();
+  const delivery = deliveryEnvFor("interpreter", active.interpreter, modelChoice);
+  if (delivery.skip) return;
+  configureLocalOnnxEnv();
+  await withInferenceDeviceFallback((device) => loadPipe(device, delivery, onProgress));
 }
 
 export async function completeInterpreter(transcript: string, repairError?: string): Promise<string> {
@@ -118,7 +143,7 @@ export async function completeInterpreter(transcript: string, repairError?: stri
     throw new Error("interpreter is rules-only");
   }
   configureLocalOnnxEnv();
-  const pipe = await withInferenceDeviceFallback((device) => loadPipe(device, delivery));
+  const pipe = await withInferenceDeviceFallback((device) => loadPipe(device, delivery, undefined));
 
   const extra = repairError ? repairError : undefined;
   const opts: Record<string, unknown> = { max_new_tokens: 256, do_sample: false };

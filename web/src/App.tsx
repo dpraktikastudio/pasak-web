@@ -4,7 +4,9 @@ import { startPushToTalk } from "./lib/audio";
 import { canSync, isConsentGranted, optIn, revokeConsent, syncCorrection } from "./lib/consent";
 import { listExpenses, putExpense, saveCorrection } from "./lib/db";
 import { localTodayIso } from "./lib/dates";
-import { interpreterVersionLabel, modelChoice, sttVersionLabel } from "./lib/modelChoice";
+import { DeviceStatusCards } from "./components/DeviceStatusCards";
+import { modelChoice } from "./lib/modelChoice";
+import { notifyDeviceStatusRefresh } from "./lib/modelStatus";
 import { formatMoney, sumIdrExpenses } from "./lib/formatMoney";
 import { expenseModelVersions, getActiveVersions } from "./lib/updates";
 import type { ExpenseFields, ExpenseRecord } from "./lib/types";
@@ -192,6 +194,7 @@ export function App() {
       setOpenId(null);
       setForm({ ...result.prediction });
       setDateTouched(false);
+      notifyDeviceStatusRefresh();
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Capture failed.");
     } finally {
@@ -278,6 +281,7 @@ export function App() {
       }
       setDraft({ ...draft, correction });
       await reload();
+      notifyDeviceStatusRefresh();
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Save failed.");
     } finally {
@@ -298,14 +302,12 @@ export function App() {
       <header className="app-header">
         <div className="app-header__brand">
           <h1>pasak-web</h1>
-          <p>
-            Tap to record, speak, tap again to stop. Models stay on this device (
-            <code>{sttVersionLabel}</code>
-            {interpreterVersionLabel ? `, ${interpreterVersionLabel}` : ", rules-only"}).
-          </p>
+          <p>Tap to record, speak, tap again to stop. Models stay on this device.</p>
         </div>
         <ThemeToggle />
       </header>
+
+      <DeviceStatusCards />
 
       <div className="app-columns">
         <div className="col-capture">

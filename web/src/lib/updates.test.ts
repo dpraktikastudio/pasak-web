@@ -3,7 +3,13 @@ import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { getMeta, putMeta } from "./db";
 import { env } from "@huggingface/transformers";
-import { applyPendingVersions, checkForUpdates, deliveryEnvFor, expenseModelVersions } from "./updates";
+import {
+  applyPendingVersions,
+  checkForUpdates,
+  deliveryEnvFor,
+  expenseModelVersions,
+  verifyBundleCache,
+} from "./updates";
 import type { FamilyVersions } from "./updates";
 
 const BASE = "https://models.example";
@@ -260,6 +266,24 @@ const phase1Lm = {
   stt_dir: "models/whisper-base/spike",
   interpreter_dir: "models/interpreter/0.2.0",
 };
+
+describe("verifyBundleCache", () => {
+  test("partial cache reports verified file counts", async () => {
+    installCaches();
+    const bundle = {
+      version: "1.0.0",
+      baseUrl: BASE,
+      files: [
+        { path: WHISPER_PATH, sha256: GOOD_SHA },
+        { path: "models/whisper/1.0.0/other.bin", sha256: BAD_SHA },
+      ],
+    };
+    const cache = await caches.open("pasak-models");
+    await cache.put(WHISPER_URL, textResponse(BODY));
+    const v = await verifyBundleCache(bundle);
+    expect(v).toEqual({ complete: false, verifiedFiles: 1, totalFiles: 2, unknown: false });
+  });
+});
 
 describe("deliveryEnvFor", () => {
   const prevUseFS = env.useFS;

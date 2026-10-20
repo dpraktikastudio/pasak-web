@@ -52,6 +52,29 @@ function staticPrefix(prefix: string, rootDir: string): Connect.NextHandleFuncti
 
 const ortSrcDir = path.join(root, "node_modules", "onnxruntime-web", "dist");
 
+/** Preview SPA fallback serves index.html for missing /assets/* → MIME errors after rebuild. */
+function previewExactFiles(distDir: string): Connect.NextHandleFunction {
+  return (req: IncomingMessage, res: ServerResponse, next: Connect.NextFunction) => {
+    const raw = req.url?.split("?")[0] ?? "";
+    const exact =
+      raw.startsWith("/assets/") ||
+      raw === "/sw.js" ||
+      raw === "/precache.json" ||
+      raw.startsWith("/ort/");
+    if (!exact) {
+      next();
+      return;
+    }
+    const file = path.join(distDir, decodeURIComponent(raw));
+    if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+      res.statusCode = 404;
+      res.end("Not Found");
+      return;
+    }
+    next();
+  };
+}
+
 function mountStatic(server: ViteDevServer | PreviewServer): void {
   server.middlewares.use(staticPrefix("/models/", modelsDir));
   server.middlewares.use(staticPrefix("/ort/", ortSrcDir));
@@ -93,7 +116,11 @@ export default defineConfig({
     {
       name: "pasak-models-ort-precache",
       configureServer: mountStatic,
-      configurePreviewServer: mountStatic,
+      configurePreviewServer(server) {
+        const distDir = path.resolve(root, "dist");
+        server.middlewares.use(previewExactFiles(distDir));
+        mountStatic(server);
+      },
       closeBundle() {
         const dist = path.resolve(root, "dist");
         copyOrt(dist);

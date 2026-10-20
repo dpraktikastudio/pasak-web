@@ -17,6 +17,10 @@ type AsrPipe = {
 
 let cached: { key: string; pipe: AsrPipe } | null = null;
 
+export function isSttPipelineLoaded(): boolean {
+  return cached !== null;
+}
+
 function assignEnv(delivery: DeliveryLoad): void {
   env.allowRemoteModels = delivery.allowRemoteModels;
   env.allowLocalModels = delivery.allowLocalModels;
@@ -55,6 +59,17 @@ async function loadPipe(
   })) as unknown as AsrPipe;
   cached = { key, pipe };
   return pipe;
+}
+
+export async function preloadStt(
+  onProgress?: (loaded: number, total?: number) => void,
+): Promise<void> {
+  if (isSttPipelineLoaded()) return;
+  const active = await getActiveVersions();
+  const delivery = deliveryEnvFor("whisper", active.whisper, modelChoice);
+  if (delivery.skip) throw new Error("invalid model ID");
+  configureLocalOnnxEnv();
+  await withInferenceDeviceFallback((device) => loadPipe(device, delivery, onProgress));
 }
 
 export async function transcribePcm(

@@ -2,7 +2,7 @@ const sw = self as unknown as {
   skipWaiting: () => Promise<void>;
   clients: { claim: () => Promise<void> };
 };
-const SHELL = "pasak-shell-v2";
+const SHELL = "pasak-shell-v3";
 const MODELS = "pasak-models-files";
 const BUNDLES = "pasak-models";
 
@@ -62,13 +62,38 @@ self.addEventListener("fetch", (event) => {
         return res;
       }
 
-      const shellPath =
-        url.pathname === "/" || url.pathname === "/index.html" || url.pathname.startsWith("/assets/");
-      if (!shellPath) return fetch(req);
+      if (url.pathname.startsWith("/assets/") || url.pathname === "/sw.js") {
+        try {
+          const res = await fetch(req);
+          const ct = res.headers.get("Content-Type") ?? "";
+          if (res.ok && ct.includes("text/html")) {
+            return new Response("Not Found", { status: 404, statusText: "Not Found" });
+          }
+          return res;
+        } catch {
+          const cache = await caches.open(SHELL);
+          const hit = await cache.match(req);
+          if (hit) return hit;
+          throw new Error("asset fetch failed");
+        }
+      }
 
-      const cache = await caches.open(SHELL);
-      const hit = await cache.match(req);
-      if (hit) return hit;
+      if (url.pathname === "/" || url.pathname === "/index.html") {
+        try {
+          const res = await fetch(req);
+          if (res.ok) {
+            const cache = await caches.open(SHELL);
+            await cache.put(req, res.clone());
+          }
+          return res;
+        } catch {
+          const cache = await caches.open(SHELL);
+          const hit = await cache.match(req);
+          if (hit) return hit;
+          throw new Error("document fetch failed");
+        }
+      }
+
       return fetch(req);
     })(),
   );
