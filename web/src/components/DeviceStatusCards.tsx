@@ -93,8 +93,7 @@ function InCardProgressFooter({ warmup }: { warmup: CardWarmup }) {
           <progress className="status-card__meter" />
         )}
         <p className="status-card__progress-bytes">
-          {snapshot.loaded}
-          {snapshot.total != null ? ` / ${snapshot.total}` : ""} bytes
+          {formatModelSize(snapshot.loaded, snapshot.total ?? null)}
         </p>
       </div>
     </div>

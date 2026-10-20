@@ -52,8 +52,85 @@ type Family = ModelFamily;
 
 const downloadState: Partial<Record<ModelFamily, FamilyDownloadState>> = {};
 
+const PROGRESS_POLL_MS = 200;
+
+type ActiveByteProgress = {
+  family: ModelFamily;
+  loaded: number;
+  total: number | undefined;
+  callbacks: FamilyDownloadCallbacks | undefined;
+};
+
+let activeByteProgress: ActiveByteProgress | null = null;
+let progressPollTimer: ReturnType<typeof setInterval> | null = null;
+
+function stopByteProgressPoll(): void {
+  if (progressPollTimer !== null) {
+    clearInterval(progressPollTimer);
+    progressPollTimer = null;
+  }
+  activeByteProgress = null;
+}
+
+function startByteProgressPoll(
+  family: ModelFamily,
+  total: number | undefined,
+  callbacks: FamilyDownloadCallbacks | undefined,
+  initialLoaded = 0,
+): void {
+  stopByteProgressPoll();
+  activeByteProgress = { family, loaded: initialLoaded, total, callbacks };
+  const tick = () => {
+    const p = activeByteProgress;
+    if (!p) return;
+    p.callbacks?.onFamilyProgress?.(p.family, p.loaded, p.total);
+  };
+  tick();
+  progressPollTimer = setInterval(tick, PROGRESS_POLL_MS);
+}
+
+function addByteProgress(delta: number): void {
+  if (activeByteProgress && delta > 0) activeByteProgress.loaded += delta;
+}
+
 export function getFamilyDownloadState(family: ModelFamily): FamilyDownloadState | null {
   return downloadState[family] ?? null;
+}
+
+async function fetchVerifiedBody(
+  url: string,
+  expectedSha: string,
+): Promise<{ body: ArrayBuffer; contentType: string }> {
+  const res = await fetch(url, { mode: "cors", cache: "no-store" });
+  if (!res.ok) throw new Error("fetch failed");
+  const contentType = res.headers.get("Content-Type") ?? "application/octet-stream";
+  if (!res.body) {
+    const body = await res.arrayBuffer();
+    addByteProgress(body.byteLength);
+    const hex = await sha256Hex(body);
+    if (hex !== expectedSha.toLowerCase()) throw new Error("sha256 mismatch");
+    return { body, contentType };
+  }
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    length += value.byteLength;
+    addByteProgress(value.byteLength);
+  }
+  const out = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const body = out.buffer;
+  const hex = await sha256Hex(body);
+  if (hex !== expectedSha.toLowerCase()) throw new Error("sha256 mismatch");
+  return { body, contentType };
 }
 
 function notifyModelDelivery(): void {
@@ -183,6 +260,7 @@ function finishFamilyDownload(
   callbacks: FamilyDownloadCallbacks | undefined,
   outcome: FamilyDownloadState,
 ): void {
+  stopByteProgressPoll();
   if (outcome === "done" || outcome === "failed") {
     delete downloadState[family];
   } else {
@@ -213,32 +291,23 @@ async function downloadFamily(
 
   downloadState[family] = "downloading";
   callbacks?.onFamilyState?.(family, "downloading");
-  callbacks?.onFamilyProgress?.(family, 0, byteTotal);
   const cache = await caches.open(MODELS_CACHE);
   const putUrls: string[] = [];
   let loadedBytes = 0;
+  for (const file of entry.files) {
+    const url = joinUrl(entry.baseUrl, file.path);
+    const cachedSize = await verifiedCachedBytes(url, file.sha256);
+    if (cachedSize !== null) loadedBytes += cachedSize;
+  }
+  startByteProgressPoll(family, byteTotal, callbacks, loadedBytes);
   try {
     const verified: { url: string; body: ArrayBuffer; contentType: string }[] = [];
     for (const file of entry.files) {
       const url = joinUrl(entry.baseUrl, file.path);
       const cachedSize = await verifiedCachedBytes(url, file.sha256);
-      if (cachedSize !== null) {
-        loadedBytes += cachedSize;
-        callbacks?.onFamilyProgress?.(family, loadedBytes, byteTotal);
-        continue;
-      }
-      const res = await fetch(url, { mode: "cors", cache: "no-store" });
-      if (!res.ok) throw new Error("fetch failed");
-      const body = await res.arrayBuffer();
-      const hex = await sha256Hex(body);
-      if (hex !== file.sha256.toLowerCase()) throw new Error("sha256 mismatch");
-      loadedBytes += body.byteLength;
-      callbacks?.onFamilyProgress?.(family, loadedBytes, byteTotal);
-      verified.push({
-        url,
-        body,
-        contentType: res.headers.get("Content-Type") ?? "application/octet-stream",
-      });
+      if (cachedSize !== null) continue;
+      const { body, contentType } = await fetchVerifiedBody(url, file.sha256);
+      verified.push({ url, body, contentType });
     }
     for (const item of verified) {
       await cache.put(item.url, new Response(item.body, { headers: { "Content-Type": item.contentType } }));
