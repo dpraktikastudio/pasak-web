@@ -643,6 +643,12 @@ select {
   border: 1px solid var(--border);
 }
 
+.capture-listening {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .transcribe-status {
   display: flex;
   flex-direction: column;

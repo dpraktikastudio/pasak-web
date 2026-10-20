@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useTheme, type ThemePreference } from "./hooks/useTheme";
-import { startPushToTalk } from "./lib/audio";
+import { startPushToTalk, type TalkResult } from "./lib/audio";
 import { canSync, isConsentGranted, optIn, revokeConsent, syncCorrection } from "./lib/consent";
-import { listExpenses, PASAK_DATA_CLEARED_EVENT, putExpense, saveCorrection } from "./lib/db";
+import { listExpenses, PASAK_DATA_CLEARED_EVENT, putExpense } from "./lib/db";
+import { createAutoSaveScheduler } from "./lib/reviewAutoSave";
 import { localTodayIso } from "./lib/dates";
 import type { CaptureProgressSnapshot } from "./lib/captureProgress";
 import { DeviceStatusCards } from "./components/DeviceStatusCards";
@@ -73,7 +74,6 @@ export function App() {
   const [holding, setHolding] = useState(false);
   const [captureProgress, setCaptureProgress] = useState<CaptureProgressSnapshot | null>(null);
   const [draft, setDraft] = useState<ExpenseRecord | null>(null);
-  const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [form, setForm] = useState<ExpenseFields>({
@@ -90,7 +90,15 @@ export function App() {
   const [consentBusy, setConsentBusy] = useState(false);
   const [clipUrl, setClipUrl] = useState<string | null>(null);
   const session = useRef<ReturnType<typeof startPushToTalk> | null>(null);
+  const captureGeneration = useRef(0);
+  const autoSaveScheduler = useRef(createAutoSaveScheduler());
+  const draftRef = useRef(draft);
+  const formRef = useRef(form);
+  const dateTouchedRef = useRef(dateTouched);
   const savingRef = useRef(false);
+  draftRef.current = draft;
+  formRef.current = form;
+  dateTouchedRef.current = dateTouched;
   const meterRef = useRef<HTMLCanvasElement>(null);
   const levelsRef = useRef<number[]>([]);
   const meterBarColorRef = useRef("#3a9b8f");
@@ -123,18 +131,6 @@ export function App() {
   const amountOk = form.amount !== null && Number.isInteger(form.amount) && form.amount >= 0;
   const currencyOk = Boolean(form.currency && form.currency.trim());
   const canSave = amountOk && currencyOk && !saving && draft !== null;
-
-  function formForSave(): ExpenseFields {
-    if (!draft) return form;
-    return {
-      amount: form.amount,
-      currency: form.currency,
-      category: form.category,
-      item: form.item === "" ? null : form.item,
-      merchant: form.merchant === "" ? null : form.merchant,
-      date: dateTouched ? form.date : draft.prediction.date,
-    };
-  }
 
   useEffect(() => {
     if (!holding) {
@@ -176,52 +172,144 @@ export function App() {
     return () => cancelAnimationFrame(raf);
   }, [holding]);
 
-  async function stopRecording() {
-    const s = session.current;
-    session.current = null;
-    setHolding(false);
-    if (!s) return;
-    setBusy(true);
+  function cancelAutoSave() {
+    autoSaveScheduler.current.cancel();
+  }
+
+  function clearDraftPanel() {
+    cancelAutoSave();
+    setClipUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setDraft(null);
+    setForm({
+      amount: null,
+      currency: null,
+      category: null,
+      item: null,
+      merchant: null,
+      date: null,
+    });
+    setDateTouched(false);
+  }
+
+  function canSaveFromRefs(): boolean {
+    const d = draftRef.current;
+    if (!d || savingRef.current) return false;
+    const f = formRef.current;
+    const amountOk =
+      f.amount !== null && Number.isInteger(f.amount) && f.amount >= 0;
+    const currencyOk = Boolean(f.currency && f.currency.trim());
+    return amountOk && currencyOk;
+  }
+
+  function formForSaveFromRefs(): ExpenseFields | null {
+    const d = draftRef.current;
+    if (!d) return null;
+    const f = formRef.current;
+    return {
+      amount: f.amount,
+      currency: f.currency,
+      category: f.category,
+      item: f.item === "" ? null : f.item,
+      merchant: f.merchant === "" ? null : f.merchant,
+      date: dateTouchedRef.current ? f.date : d.prediction.date,
+    };
+  }
+
+  async function applyCaptureSuccess(result: TalkResult & { ok: true }, generation: number) {
+    if (generation !== captureGeneration.current) return;
+    const next: ExpenseRecord = {
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      transcript: result.transcript,
+      prediction: result.prediction,
+      correction: null,
+      modelVersions: expenseModelVersions(await getActiveVersions(), modelChoice),
+    };
+    setClipUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return result.clipUrl;
+    });
+    setDraft(next);
+    setOpenId(null);
+    setForm({ ...result.prediction });
+    setDateTouched(false);
+    setStatus("");
+    notifyDeviceStatusRefresh();
+  }
+
+  async function finishCapture(promise: Promise<TalkResult>, generation: number) {
     try {
-      const result = await s.stop();
-      setCaptureProgress(null);
+      const result = await promise;
+      if (generation !== captureGeneration.current) return;
       if (!result.ok) {
         setStatus(result.message);
         return;
       }
-      const next: ExpenseRecord = {
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-        transcript: result.transcript,
-        prediction: result.prediction,
-        correction: null,
-        modelVersions: expenseModelVersions(await getActiveVersions(), modelChoice),
-      };
-      if (clipUrl) URL.revokeObjectURL(clipUrl);
-      setClipUrl(result.clipUrl);
-      setDraft(next);
-      setSaved(false);
-      setOpenId(null);
-      setForm({ ...result.prediction });
-      setDateTouched(false);
+      await applyCaptureSuccess(result, generation);
+    } catch (err) {
+      if (generation === captureGeneration.current) {
+        setStatus(err instanceof Error ? err.message : "Capture failed.");
+      }
+    } finally {
+      if (generation === captureGeneration.current) {
+        setHolding(false);
+        setBusy(false);
+        setCaptureProgress(null);
+        session.current = null;
+      }
+    }
+  }
+
+  async function saveAndClear() {
+    const d = draftRef.current;
+    if (!d || savingRef.current) return;
+    const next = formForSaveFromRefs();
+    if (!next) return;
+    const amountOk = next.amount !== null && Number.isInteger(next.amount) && next.amount >= 0;
+    const currencyOk = Boolean(next.currency && next.currency.trim());
+    if (!amountOk || !currencyOk) return;
+
+    const correction = fieldsEqual(next, d.prediction) ? null : next;
+    savingRef.current = true;
+    setSaving(true);
+    cancelAutoSave();
+    try {
+      await putExpense({
+        ...d,
+        correction,
+      });
+      clearDraftPanel();
+      setStatus("Saved");
+      await reload();
       notifyDeviceStatusRefresh();
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Capture failed.");
+      setStatus(err instanceof Error ? err.message : "Save failed.");
     } finally {
-      setBusy(false);
+      savingRef.current = false;
+      setSaving(false);
     }
   }
 
   function onRecordClick() {
     if (busy) return;
     if (holding) {
-      void stopRecording();
+      session.current?.stop();
       return;
     }
+    cancelAutoSave();
     setStatus("");
+    const generation = ++captureGeneration.current;
     setHolding(true);
     levelsRef.current = [];
-    session.current = startPushToTalk({
+    const capture = startPushToTalk({
+      onCaptureEnd: () => {
+        if (generation !== captureGeneration.current) return;
+        setHolding(false);
+        setBusy(true);
+      },
       onCaptureStage: setCaptureProgress,
       onLevel: (level) => {
         const next = levelsRef.current;
@@ -229,7 +317,32 @@ export function App() {
         if (next.length > 80) next.shift();
       },
     });
+    session.current = capture;
+    void finishCapture(capture.finished, generation);
   }
+
+  useEffect(() => {
+    return () => {
+      cancelAutoSave();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!draft) {
+      cancelAutoSave();
+      return;
+    }
+    const draftId = draft.id;
+    autoSaveScheduler.current.schedule(() => {
+      if (draftRef.current?.id !== draftId) return;
+      if (!canSaveFromRefs()) {
+        setStatus("Add amount and currency to save.");
+        return;
+      }
+      void saveAndClear();
+    });
+    return () => cancelAutoSave();
+  }, [draft, form, dateTouched, draft?.transcript]);
 
   async function onOptIn() {
     setConsentBusy(true);
@@ -273,31 +386,9 @@ export function App() {
     }
   }
 
-  async function onSave() {
-    if (!canSave || !draft || savingRef.current) return;
-    const next = formForSave();
-    const correction = fieldsEqual(next, draft.prediction) ? null : next;
-    savingRef.current = true;
-    setSaving(true);
-    try {
-      if (!saved) {
-        await putExpense({
-          ...draft,
-          correction,
-        });
-        setSaved(true);
-      } else {
-        await saveCorrection(draft.id, correction);
-      }
-      setDraft({ ...draft, correction });
-      await reload();
-      notifyDeviceStatusRefresh();
-    } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Save failed.");
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-    }
+  function onSaveNow() {
+    if (!canSave) return;
+    void saveAndClear();
   }
 
   const dateUi = displayDate(dateTouched ? form.date : (draft?.prediction.date ?? null), today);
@@ -312,7 +403,10 @@ export function App() {
       <header className="app-header">
         <div className="app-header__brand">
           <h1>pasak-web</h1>
-          <p>Tap to record, speak, tap again to stop. Models stay on this device.</p>
+          <p>
+            Tap to record and speak. Tap again to finish early, or pause about 2 seconds when done.
+            Models stay on this device.
+          </p>
         </div>
         <ThemeToggle />
       </header>
@@ -329,43 +423,45 @@ export function App() {
                 className="btn-record"
                 disabled={busy}
                 aria-pressed={holding}
+                aria-busy={busy && !holding}
                 onClick={onRecordClick}
               >
-                {holding
-                  ? "Tap to stop"
-                  : busy
-                    ? (captureProgress?.label ?? "Working…")
-                    : "Tap to record"}
+                {holding ? "Tap to finish" : "Tap to record"}
               </button>
-              {busy && captureProgress ? (
+              {holding ? (
+                <p className="capture-listening" role="status" aria-live="polite">
+                  Listening…
+                </p>
+              ) : null}
+              {busy && !holding ? (
                 <div className="transcribe-status" role="status" aria-live="polite" aria-busy="true">
                   <p className="transcribe-status__row">
                     <span className="spinner" aria-hidden />
-                    <span>{captureProgress.label}</span>
-                    <span className="capture-step-hint">
-                      Step {captureProgress.step} of {captureProgress.steps}
-                    </span>
+                    <span>{captureProgress?.label ?? "Processing…"}</span>
+                    {captureProgress ? (
+                      <span className="capture-step-hint">
+                        Step {captureProgress.step} of {captureProgress.steps}
+                      </span>
+                    ) : null}
                   </p>
-                  <progress
-                    className="capture-step-bar"
-                    value={captureProgress.step}
-                    max={captureProgress.steps}
-                  />
+                  {captureProgress ? (
+                    <progress
+                      className="capture-step-bar"
+                      value={captureProgress.step}
+                      max={captureProgress.steps}
+                    />
+                  ) : null}
                 </div>
-              ) : busy ? (
-                <p className="transcribe-status" role="status" aria-live="polite" aria-busy="true">
-                  <span className="spinner" aria-hidden />
-                  Working…
-                </p>
               ) : null}
-              <canvas
-                ref={meterRef}
-                className="level-meter"
-                width={320}
-                height={48}
-                hidden={!holding}
-                aria-hidden
-              />
+              {holding ? (
+                <canvas
+                  ref={meterRef}
+                  className="level-meter"
+                  width={320}
+                  height={48}
+                  aria-hidden
+                />
+              ) : null}
               {status ? (
                 <p className="status-message" role="status">
                   {status}
@@ -433,8 +529,8 @@ export function App() {
                   }}
                 />
               </label>
-              <button type="button" disabled={!canSave} onClick={() => void onSave()}>
-                Save
+              <button type="button" disabled={!canSave} onClick={() => onSaveNow()}>
+                Save now
               </button>
               <div className="consent-row">
                 <button type="button" disabled={consentBusy} onClick={() => void onOptIn()}>
