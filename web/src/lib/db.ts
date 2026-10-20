@@ -149,14 +149,13 @@ export function notifyPasakDataCleared(): void {
   }
 }
 
-/** Wipes all expenses and meta (consent, model versions, install id, etc.). */
+/** Wipes all expense records. Meta (consent, model versions, install id, etc.) is kept. */
 export async function clearPasakIndexedDb(): Promise<void> {
   await withDb(
     (db) =>
       new Promise<void>((resolve, reject) => {
-        const tx = db.transaction([STORE, META], "readwrite");
+        const tx = db.transaction(STORE, "readwrite");
         tx.objectStore(STORE).clear();
-        tx.objectStore(META).clear();
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
       }),

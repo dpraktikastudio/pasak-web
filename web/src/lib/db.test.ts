@@ -151,12 +151,12 @@ describe("db", () => {
     ).toMatchObject({ item: null });
   });
 
-  test("clearPasakIndexedDb wipes expenses and meta", async () => {
+  test("clearPasakIndexedDb wipes expenses but keeps meta", async () => {
     await putExpense(rec("x", "2026-01-01T00:00:00.000Z", {}));
     await putMeta("activeVersions", { whisper: null, interpreter: null });
     await clearPasakIndexedDb();
     expect(await listExpenses()).toEqual([]);
-    expect(await getMeta("activeVersions")).toBeUndefined();
+    expect(await getMeta("activeVersions")).toEqual({ whisper: null, interpreter: null });
   });
 
   test("saveCorrection leaves other fields unchanged", async () => {

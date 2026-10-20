@@ -88,8 +88,8 @@ const REMOVE_MODEL_CACHES_BODY: ReactNode = (
 const CLEAR_IDB_BODY: ReactNode = (
   <>
     <p>
-      Deletes <strong>all expenses</strong> and <strong>all meta</strong> in Pasak IndexedDB (consent, install
-      id, model version pointers).
+      Deletes <strong>all expense records</strong> from Pasak IndexedDB. Consent, install id, and model version
+      meta are kept.
     </p>
     <p>Model files in Cache API are not removed. The expense list on this page will empty.</p>
   </>
@@ -547,21 +547,18 @@ export function DeviceStatusCards({ actionsLocked = false }: DeviceStatusCardsPr
       {
         id: "clear-idb",
         label: "Clear IDB",
-        tooltip: "Delete all expenses and meta in Pasak IndexedDB. Model caches are kept.",
-        confirmTitle: "Clear Pasak IndexedDB?",
+        tooltip: "Delete all expense records in Pasak IndexedDB. Meta and model caches are kept.",
+        confirmTitle: "Clear all expenses?",
         confirmBody: CLEAR_IDB_BODY,
-        confirmLabel: "Clear database",
+        confirmLabel: "Clear expenses",
         danger: true,
         onRun: async () => {
           await clearPasakIndexedDb();
           refreshStorage();
-          refreshWhisper();
-          refreshInterpreter();
-          notifyDeviceStatusRefresh();
         },
       },
     ],
-    [refreshStorage, refreshWhisper, refreshInterpreter],
+    [refreshStorage],
   );
 
   const manifestWarmup =
