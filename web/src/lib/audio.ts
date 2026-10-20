@@ -3,12 +3,19 @@ import { localTodayIso } from "./dates";
 import { resampleMono, transcribeThenExtract } from "./pipeline";
 import type { ExpenseFields } from "./types";
 
-export const SPEECH_RMS = 0.004;
-export const SPEECH_MS = 80;
+/** Min RMS loudness to count as speech (0–1 scale on each PCM frame). Stricter = less room noise. */
+export const SPEECH_RMS = 0.02;
+/** Speech must stay at/above SPEECH_RMS this long before we arm silence detection. */
+export const SPEECH_MS = 120;
+/** After speech started, frames quieter than this accumulate toward auto-stop. */
 export const SILENCE_RMS = 0.0025;
+/** Continuous sub-SILENCE_RMS audio for this long ends capture (user did not tap). */
 export const SILENCE_MS = 2000;
+/** Absolute cap on one take; also ends capture if the worklet runs this long. */
 export const HARD_STOP_MS = 20000;
+/** Shorter clips are rejected (no STT) — avoids accidental tap or noise-only. */
 export const MIN_CLIP_MS = 250;
+/** Whisper input sample rate after resample (Hz). */
 export const TARGET_RATE = 16000;
 
 export type CaptureEndReason = "user" | "silence" | "max_duration";
