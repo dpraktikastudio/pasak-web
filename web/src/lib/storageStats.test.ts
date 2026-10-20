@@ -1,8 +1,8 @@
 import "fake-indexeddb/auto";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test } from "vitest";
 import { putExpense, putMeta } from "./db";
 import type { ExpenseRecord } from "./types";
-import { estimatePasakDbBytes, getOriginStorageEstimate, getPasakStorageStats } from "./storageStats";
+import { estimatePasakDbBytes, getPasakStorageStats } from "./storageStats";
 
 const sampleExpense: ExpenseRecord = {
   id: "e1",
@@ -29,10 +29,6 @@ describe("storageStats", () => {
     });
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   test("estimatePasakDbBytes counts expenses and meta", async () => {
     await putExpense(sampleExpense);
     await putMeta("activeVersions", { whisper: null, interpreter: null });
@@ -42,29 +38,10 @@ describe("storageStats", () => {
     expect(stats.bytes).toBeGreaterThan(0);
   });
 
-  test("getOriginStorageEstimate returns null when API missing", async () => {
-    vi.stubGlobal("navigator", { storage: {} });
-    expect(await getOriginStorageEstimate()).toBeNull();
-  });
-
-  test("getOriginStorageEstimate reads usage and quota", async () => {
-    vi.stubGlobal("navigator", {
-      storage: {
-        estimate: async () => ({ usage: 1000, quota: 5000 }),
-      },
-    });
-    expect(await getOriginStorageEstimate()).toEqual({ usage: 1000, quota: 5000 });
-  });
-
-  test("getPasakStorageStats combines db and origin", async () => {
-    vi.stubGlobal("navigator", {
-      storage: {
-        estimate: async () => ({ usage: 200, quota: 10000 }),
-      },
-    });
+  test("getPasakStorageStats returns db stats only", async () => {
     await putExpense(sampleExpense);
     const all = await getPasakStorageStats();
     expect(all.db.expenseCount).toBe(1);
-    expect(all.origin).toEqual({ usage: 200, quota: 10000 });
+    expect(all).not.toHaveProperty("origin");
   });
 });

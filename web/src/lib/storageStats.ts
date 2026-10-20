@@ -6,11 +6,6 @@ export type PasakDbStats = {
   metaKeyCount: number;
 };
 
-export type OriginStorageEstimate = {
-  usage: number;
-  quota: number;
-};
-
 function jsonByteSize(value: unknown): number {
   return new Blob([JSON.stringify(value)]).size;
 }
@@ -43,26 +38,13 @@ export async function estimatePasakDbBytes(): Promise<PasakDbStats> {
   }
 }
 
-export async function getOriginStorageEstimate(): Promise<OriginStorageEstimate | null> {
-  try {
-    const estimate = await navigator.storage?.estimate?.();
-    if (!estimate || typeof estimate.usage !== "number" || typeof estimate.quota !== "number") {
-      return null;
-    }
-    return { usage: estimate.usage, quota: estimate.quota };
-  } catch {
-    return null;
-  }
-}
-
 export type PasakStorageStats = {
   db: PasakDbStats;
-  origin: OriginStorageEstimate | null;
 };
 
 export async function getPasakStorageStats(): Promise<PasakStorageStats> {
-  const [db, origin] = await Promise.all([estimatePasakDbBytes(), getOriginStorageEstimate()]);
-  return { db, origin };
+  const db = await estimatePasakDbBytes();
+  return { db };
 }
 
 export function formatBytes(n: number): string {

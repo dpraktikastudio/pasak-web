@@ -169,6 +169,126 @@ body {
   .status-cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .status-cards__model-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+.status-cards__model-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.status-card__head-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.status-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.status-card__action-btn {
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.status-card__action-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.status-card__action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.confirm-dialog {
+  border: none;
+  border-radius: var(--radius);
+  padding: 0;
+  max-width: min(28rem, calc(100vw - 2rem));
+  box-shadow: var(--shadow);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.confirm-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.confirm-dialog__panel {
+  padding: 1.1rem 1.25rem;
+  margin: 0;
+}
+
+.confirm-dialog__title {
+  margin: 0 0 0.65rem;
+  font-size: 1.05rem;
+}
+
+.confirm-dialog__body {
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.confirm-dialog__body p {
+  margin: 0 0 0.65rem;
+}
+
+.confirm-dialog__body p:last-child {
+  margin-bottom: 0;
+}
+
+.confirm-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.confirm-dialog__btn {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.confirm-dialog__btn--primary {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
+.confirm-dialog__btn--danger {
+  border-color: #c44;
+  background: rgba(200, 68, 68, 0.12);
+  color: #e66;
 }
 
 .status-card {

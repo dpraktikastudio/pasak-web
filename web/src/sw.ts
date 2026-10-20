@@ -2,9 +2,15 @@ const sw = self as unknown as {
   skipWaiting: () => Promise<void>;
   clients: { claim: () => Promise<void> };
 };
-const SHELL = "pasak-shell-v3";
-const MODELS = "pasak-models-files";
-const BUNDLES = "pasak-models";
+import {
+  PASAK_MODELS_CACHE,
+  PASAK_MODELS_FILES_CACHE,
+  PASAK_SHELL_CACHE,
+} from "./lib/cacheNames";
+
+const SHELL = PASAK_SHELL_CACHE;
+const MODELS = PASAK_MODELS_FILES_CACHE;
+const BUNDLES = PASAK_MODELS_CACHE;
 
 self.addEventListener("install", (event) => {
   const e = event as Event & { waitUntil: (p: Promise<unknown>) => void };

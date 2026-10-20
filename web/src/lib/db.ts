@@ -140,3 +140,26 @@ export async function putMeta(key: string, value: unknown): Promise<void> {
       }),
   );
 }
+
+export const PASAK_DATA_CLEARED_EVENT = "pasak-data-cleared";
+
+export function notifyPasakDataCleared(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(PASAK_DATA_CLEARED_EVENT));
+  }
+}
+
+/** Wipes all expenses and meta (consent, model versions, install id, etc.). */
+export async function clearPasakIndexedDb(): Promise<void> {
+  await withDb(
+    (db) =>
+      new Promise<void>((resolve, reject) => {
+        const tx = db.transaction([STORE, META], "readwrite");
+        tx.objectStore(STORE).clear();
+        tx.objectStore(META).clear();
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      }),
+  );
+  notifyPasakDataCleared();
+}

@@ -17,6 +17,16 @@ let cached: { key: string; pipe: GenPipe } | null = null;
 export function isInterpreterPipelineLoaded(): boolean {
   return cached !== null;
 }
+
+export async function disposeLoadedInterpreterPipeline(): Promise<void> {
+  if (!cached) return;
+  try {
+    await cached.pipe.dispose?.();
+  } catch {
+    // ignore
+  }
+  cached = null;
+}
 let thinkingFallbackNoted = false;
 
 const THINKING_FALLBACK_LINE =

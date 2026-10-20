@@ -1,4 +1,5 @@
 import { env } from "@huggingface/transformers";
+import { PASAK_MODELS_CACHE, PASAK_MODELS_FILES_CACHE } from "./cacheNames";
 import { getMeta, putMeta } from "./db";
 import { dirModelId, dirVersionLabel } from "./modelChoice";
 
@@ -139,7 +140,7 @@ function notifyModelDelivery(): void {
   }
 }
 
-const MODELS_CACHE = "pasak-models";
+const MODELS_CACHE = PASAK_MODELS_CACHE;
 const ACTIVE = "activeVersions";
 const PENDING = "pendingVersions";
 
@@ -378,7 +379,7 @@ export async function applyPendingVersions(): Promise<void> {
   }
 }
 
-export const BUNDLED_MODEL_FILES_CACHE = "pasak-models-files";
+export const BUNDLED_MODEL_FILES_CACHE = PASAK_MODELS_FILES_CACHE;
 
 const HF_MODEL_ID_RE = /^(\b[\w\-.]+\b\/)?\b[\w\-.]{1,96}\b$/;
 

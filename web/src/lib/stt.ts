@@ -21,6 +21,16 @@ export function isSttPipelineLoaded(): boolean {
   return cached !== null;
 }
 
+export async function disposeLoadedSttPipeline(): Promise<void> {
+  if (!cached) return;
+  try {
+    await cached.pipe.dispose?.();
+  } catch {
+    // ignore
+  }
+  cached = null;
+}
+
 function assignEnv(delivery: DeliveryLoad): void {
   env.allowRemoteModels = delivery.allowRemoteModels;
   env.allowLocalModels = delivery.allowLocalModels;

@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { useTheme, type ThemePreference } from "./hooks/useTheme";
 import { startPushToTalk } from "./lib/audio";
 import { canSync, isConsentGranted, optIn, revokeConsent, syncCorrection } from "./lib/consent";
-import { listExpenses, putExpense, saveCorrection } from "./lib/db";
+import { listExpenses, PASAK_DATA_CLEARED_EVENT, putExpense, saveCorrection } from "./lib/db";
 import { localTodayIso } from "./lib/dates";
 import { DeviceStatusCards } from "./components/DeviceStatusCards";
 import { modelChoice } from "./lib/modelChoice";
@@ -102,6 +102,15 @@ export function App() {
   useEffect(() => {
     void reload();
     void isConsentGranted().then(setConsentGranted);
+  }, []);
+
+  useEffect(() => {
+    const onDataCleared = () => {
+      void reload();
+      void isConsentGranted().then(setConsentGranted);
+    };
+    window.addEventListener(PASAK_DATA_CLEARED_EVENT, onDataCleared);
+    return () => window.removeEventListener(PASAK_DATA_CLEARED_EVENT, onDataCleared);
   }, []);
 
   useEffect(() => {
@@ -307,7 +316,7 @@ export function App() {
         <ThemeToggle />
       </header>
 
-      <DeviceStatusCards />
+      <DeviceStatusCards actionsLocked={busy || consentBusy} />
 
       <div className="app-columns">
         <div className="col-capture">

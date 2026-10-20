@@ -1,6 +1,7 @@
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, test } from "vitest";
 import {
+  clearPasakIndexedDb,
   getMeta,
   listExpenses,
   normalizeExpenseFields,
@@ -148,6 +149,14 @@ describe("db", () => {
         date: null,
       }),
     ).toMatchObject({ item: null });
+  });
+
+  test("clearPasakIndexedDb wipes expenses and meta", async () => {
+    await putExpense(rec("x", "2026-01-01T00:00:00.000Z", {}));
+    await putMeta("activeVersions", { whisper: null, interpreter: null });
+    await clearPasakIndexedDb();
+    expect(await listExpenses()).toEqual([]);
+    expect(await getMeta("activeVersions")).toBeUndefined();
   });
 
   test("saveCorrection leaves other fields unchanged", async () => {
