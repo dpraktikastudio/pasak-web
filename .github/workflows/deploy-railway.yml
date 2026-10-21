@@ -1,6 +1,7 @@
 # Deploy pasak-server and/or pasak-web to Railway.
-# Requires repo secrets: RAILWAY_TOKEN, RAILWAY_SERVICE_ID_SERVER, RAILWAY_SERVICE_ID_WEB.
-# Web build env (e.g. VITE_MANIFEST_URL) belongs on the Railway web service, not in this workflow.
+# Secrets: RAILWAY_TOKEN, RAILWAY_SERVICE_ID_SERVER, RAILWAY_SERVICE_ID_WEB.
+# Each Railway service must set its own root directory (server/ or web/) in the dashboard.
+# Web: build arg VITE_MANIFEST_URL on the Railway web service.
 
 name: Deploy Railway
 
@@ -57,11 +58,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Deploy server to Railway
-        uses: bervProject/railway-deploy@v1.2.0
+        uses: bervProject/railway-deploy@0.2.0-beta
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         with:
-          railway_token: ${{ secrets.RAILWAY_TOKEN }}
           service: ${{ secrets.RAILWAY_SERVICE_ID_SERVER }}
-          directory: server
 
   deploy-web:
     needs: resolve
@@ -71,8 +72,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Deploy web to Railway
-        uses: bervProject/railway-deploy@v1.2.0
+        uses: bervProject/railway-deploy@0.2.0-beta
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         with:
-          railway_token: ${{ secrets.RAILWAY_TOKEN }}
           service: ${{ secrets.RAILWAY_SERVICE_ID_WEB }}
-          directory: web
