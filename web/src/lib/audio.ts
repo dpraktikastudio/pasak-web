@@ -1,4 +1,8 @@
 import type { CaptureProgressSnapshot } from "./captureProgress";
+import {
+  createCaptureTimingTracker,
+  type CaptureTimingReport,
+} from "./captureTiming";
 import { localTodayIso } from "./dates";
 import { resampleMono, transcribeThenExtract } from "./pipeline";
 import type { ExpenseFields } from "./types";
@@ -40,6 +44,7 @@ export type TalkOk = {
   transcript: string;
   prediction: ExpenseFields;
   clipUrl: string;
+  timing?: CaptureTimingReport;
 };
 
 function pcmToWavBlob(pcm: Float32Array, sampleRate: number): Blob {
@@ -176,6 +181,8 @@ export function startPushToTalk(opts: {
       let speechMs = 0;
       let silenceMs = 0;
       let speechStarted = false;
+      const timing = createCaptureTimingTracker();
+      timing.recordingStart();
       const t0 = performance.now();
       hardTimer = setTimeout(() => {
         requestEnd("max_duration");
@@ -214,6 +221,7 @@ export function startPushToTalk(opts: {
       ctx = undefined;
       url = undefined;
 
+      timing.recordingEnd();
       opts.onCaptureEnd?.(endGate.getReason());
 
       const pcm = concat(chunks);
@@ -226,12 +234,16 @@ export function startPushToTalk(opts: {
         const out = await transcribeThenExtract(resampled, TARGET_RATE, {
           todayLocalIso: localTodayIso(),
           onProgress: opts.onProgress,
-          onCaptureStage: opts.onCaptureStage,
+          onCaptureStage: (snap) => {
+            timing.onStage(snap.stage);
+            opts.onCaptureStage?.(snap);
+          },
         });
         return {
           ok: true,
           ...out,
           clipUrl: URL.createObjectURL(pcmToWavBlob(resampled, TARGET_RATE)),
+          timing: timing.finish(),
         };
       } catch (err) {
         return fail("error", err instanceof Error ? err.message : "Transcription failed.");

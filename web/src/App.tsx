@@ -9,11 +9,13 @@ import {
   shareExpense,
   shareFingerprint,
 } from "./lib/consent";
+import { CaptureTimeSpent } from "./components/CaptureTimeSpent";
 import { HistoryExpenseDetail } from "./components/HistoryExpenseDetail";
 import { listExpenses, PASAK_DATA_CLEARED_EVENT, putExpense, updateExpense } from "./lib/db";
 import { createAutoSaveScheduler } from "./lib/reviewAutoSave";
 import { localTodayIso } from "./lib/dates";
 import type { CaptureProgressSnapshot } from "./lib/captureProgress";
+import type { CaptureTimingReport } from "./lib/captureTiming";
 import { DeviceStatusCards } from "./components/DeviceStatusCards";
 import { TrainingSharingPanel } from "./components/TrainingSharingPanel";
 import { modelChoice } from "./lib/modelChoice";
@@ -68,6 +70,7 @@ export function App() {
   const [status, setStatus] = useState("");
   const [holding, setHolding] = useState(false);
   const [captureProgress, setCaptureProgress] = useState<CaptureProgressSnapshot | null>(null);
+  const [captureTiming, setCaptureTiming] = useState<CaptureTimingReport | null>(null);
   const [draft, setDraft] = useState<ExpenseRecord | null>(null);
   const [saving, setSaving] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -179,6 +182,7 @@ export function App() {
       return null;
     });
     setDraft(null);
+    setCaptureTiming(null);
     setForm({
       amount: null,
       currency: null,
@@ -229,6 +233,7 @@ export function App() {
       return result.clipUrl;
     });
     setDraft(next);
+    setCaptureTiming(result.timing ?? null);
     setOpenId(null);
     setForm({ ...result.prediction });
     setDateTouched(false);
@@ -241,12 +246,14 @@ export function App() {
       const result = await promise;
       if (generation !== captureGeneration.current) return;
       if (!result.ok) {
+        setCaptureTiming(null);
         setStatus(result.message);
         return;
       }
       await applyCaptureSuccess(result, generation);
     } catch (err) {
       if (generation === captureGeneration.current) {
+        setCaptureTiming(null);
         setStatus(err instanceof Error ? err.message : "Capture failed.");
       }
     } finally {
@@ -296,6 +303,7 @@ export function App() {
       return;
     }
     cancelAutoSave();
+    setCaptureTiming(null);
     setStatus("");
     const generation = ++captureGeneration.current;
     setHolding(true);
@@ -546,6 +554,7 @@ export function App() {
                   }}
                 />
               </label>
+              {captureTiming ? <CaptureTimeSpent report={captureTiming} /> : null}
               <button type="button" disabled={!canSave} onClick={() => onSaveNow()}>
                 Save now
               </button>
