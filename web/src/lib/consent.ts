@@ -1,5 +1,5 @@
-import { getMeta, putMeta } from "./db";
-import type { ExpenseRecord } from "./types";
+import { clearAllExpenseShareMetadata, getMeta, normalizeExpenseFields, putMeta } from "./db";
+import type { ExpenseFields, ExpenseRecord } from "./types";
 
 export const CONSENT_VERSION = "1";
 
@@ -9,10 +9,11 @@ const META_VERSION = "consentVersion";
 
 export type ExampleBody = {
   installId: string;
+  expenseId: string;
   consentVersion: string;
   transcript: string;
   prediction: ExpenseRecord["prediction"];
-  correction: ExpenseRecord["correction"] & {};
+  correction: ExpenseFields;
   modelVersions: ExpenseRecord["modelVersions"];
 };
 
@@ -38,21 +39,56 @@ export async function isConsentGranted(): Promise<boolean> {
   return (await getMeta<boolean>(META_GRANTED)) === true;
 }
 
+export function shownExpenseFields(record: ExpenseRecord): ExpenseFields {
+  return record.correction ?? record.prediction;
+}
+
+export function hasValidShareFields(record: ExpenseRecord): boolean {
+  const f = shownExpenseFields(record);
+  const amountOk = f.amount !== null && Number.isInteger(f.amount) && f.amount >= 0;
+  const currencyOk = Boolean(f.currency && f.currency.trim());
+  return amountOk && currencyOk;
+}
+
+export function canShareExpense(record: ExpenseRecord, consentGranted: boolean): boolean {
+  return consentGranted && getApiOrigin() !== null && hasValidShareFields(record);
+}
+
+/** @deprecated use canShareExpense */
 export function canSync(record: ExpenseRecord, consentGranted: boolean): boolean {
-  return consentGranted && record.correction !== null;
+  return canShareExpense(record, consentGranted);
+}
+
+export function shareFingerprint(record: ExpenseRecord): string {
+  const f = shownExpenseFields(record);
+  return JSON.stringify({
+    transcript: record.transcript,
+    amount: f.amount,
+    currency: f.currency,
+    item: f.item,
+    date: f.date,
+  });
+}
+
+export function needsShareUpdate(record: ExpenseRecord): boolean {
+  if (!record.lastSharedAt) return true;
+  if (!record.sharedFingerprint) return true;
+  return shareFingerprint(record) !== record.sharedFingerprint;
+}
+
+export function trainingCorrectionFromRecord(record: ExpenseRecord): ExpenseFields {
+  return normalizeExpenseFields(shownExpenseFields(record));
 }
 
 export async function buildExampleBody(record: ExpenseRecord): Promise<ExampleBody> {
-  if (record.correction === null) {
-    throw new Error("correction required for sync");
-  }
   const installId = await getInstallId();
   return {
     installId,
+    expenseId: record.id,
     consentVersion: CONSENT_VERSION,
     transcript: record.transcript,
-    prediction: record.prediction,
-    correction: record.correction,
+    prediction: normalizeExpenseFields(record.prediction),
+    correction: trainingCorrectionFromRecord(record),
     modelVersions: record.modelVersions,
   };
 }
@@ -63,14 +99,16 @@ export async function optIn(): Promise<void> {
   await putMeta(META_VERSION, CONSENT_VERSION);
 }
 
-export async function syncCorrection(record: ExpenseRecord): Promise<{ error?: string }> {
+export async function shareExpense(
+  record: ExpenseRecord,
+): Promise<{ error?: string; id?: string }> {
   const origin = getApiOrigin();
   if (!origin) {
     return { error: "VITE_MANIFEST_URL is not set" };
   }
   const granted = await isConsentGranted();
-  if (!canSync(record, granted)) {
-    return { error: "Save a correction and opt in before syncing" };
+  if (!canShareExpense(record, granted)) {
+    return { error: "Opt in and ensure amount and currency are set before sharing" };
   }
 
   const installId = await getInstallId();
@@ -92,7 +130,14 @@ export async function syncCorrection(record: ExpenseRecord): Promise<{ error?: s
   if (!exampleRes.ok) {
     return { error: `Sync failed: ${exampleRes.status}` };
   }
-  return {};
+  const payload = (await exampleRes.json()) as { id?: string };
+  return { id: payload.id };
+}
+
+/** @deprecated use shareExpense */
+export async function syncCorrection(record: ExpenseRecord): Promise<{ error?: string }> {
+  const result = await shareExpense(record);
+  return result.error ? { error: result.error } : {};
 }
 
 export async function revokeConsent(): Promise<{ error?: string }> {
@@ -106,5 +151,6 @@ export async function revokeConsent(): Promise<{ error?: string }> {
     return { error: `Revoke failed: ${res.status}` };
   }
   await putMeta(META_GRANTED, false);
+  await clearAllExpenseShareMetadata();
   return {};
 }

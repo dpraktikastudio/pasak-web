@@ -15,13 +15,24 @@ Python **3.12** (`requires-python = ">=3.12,<3.13"`). Do not install this packag
 | `MODEL_STORAGE=local` | Copy under `MODEL_LOCAL_DIR/models/{family}/{version}/` |
 | `MODEL_STORAGE=r2` | Same keys in bucket `R2_BUCKET_MODELS` (not used until you set R2 env) |
 
-`CORS_ORIGINS` must list the SPA origin. Example is `http://127.0.0.1:4173` (`vite preview`). `vite dev` (5173) is a different origin.
+`CORS_ORIGINS` must list every SPA origin you use (comma-separated). Include both `http://127.0.0.1:4173` (`vite preview`) and `http://127.0.0.1:5173` (`vite dev`) if you run either. Restart uvicorn after changing `.env`.
 
 Copy `.env.example` to `.env` (gitignored). `uvicorn` and `python -m pasak.admin` load that file on start (`.env` overrides the process env). pytest does not load it. Startup runs SQL in `pasak/migrations/` against `DATABASE_URL` before serving. Logs `startup migrate host:port/db` (no password).
 
+## Docker
+
+API image (migrations on startup, listens on `$PORT`):
+
+```powershell
+docker build -t pasak-server .
+docker run --rm -p 8000:8000 -e DATABASE_URL=... -e MODEL_STORAGE=local -e MODEL_LOCAL_DIR=/data -e PUBLIC_MODEL_BASE_URL=... pasak-server
+```
+
+Full stack (Postgres + API + web) from **repo root**: `docker compose up --build` — see root [`compose.yaml`](../compose.yaml).
+
 ## Postgres
 
-From the **repo root**:
+From the **repo root** (database only):
 
 ```powershell
 docker compose -f server/docker-compose.yml up -d

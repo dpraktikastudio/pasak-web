@@ -14,7 +14,7 @@ from pasak.scrub import ScrubRejected, scrub_request
 
 router = APIRouter()
 
-TOP_LEVEL_KEYS = frozenset(
+REQUIRED_EXAMPLE_KEYS = frozenset(
     {
         "installId",
         "consentVersion",
@@ -24,8 +24,9 @@ TOP_LEVEL_KEYS = frozenset(
         "modelVersions",
     }
 )
+TOP_LEVEL_KEYS = REQUIRED_EXAMPLE_KEYS | frozenset({"expenseId"})
 EXPENSE_FIELD_KEYS = frozenset(
-    {"amount", "currency", "category", "merchant", "date"}
+    {"amount", "currency", "category", "item", "merchant", "date"}
 )
 CATEGORIES = frozenset(
     {"food", "transport", "bills", "shopping", "health", "other"}
@@ -169,6 +170,9 @@ def _validate_expense_fields(raw: Any) -> dict:
     category = raw["category"]
     if category is not None and category not in CATEGORIES:
         raise _bad_shape()
+    item = raw["item"]
+    if item is not None and not isinstance(item, str):
+        raise _bad_shape()
     merchant = raw["merchant"]
     if merchant is not None and not isinstance(merchant, str):
         raise _bad_shape()
@@ -199,10 +203,17 @@ def _reject_extra_top_level_keys(raw: dict) -> None:
 
 def _parse_example_fields(
     raw: Any,
-) -> tuple[uuid.UUID, str, str, dict, dict, dict]:
-    if not isinstance(raw, dict) or not TOP_LEVEL_KEYS.issubset(raw.keys()):
+) -> tuple[uuid.UUID, uuid.UUID | None, str, str, dict, dict, dict]:
+    if not isinstance(raw, dict) or not REQUIRED_EXAMPLE_KEYS.issubset(raw.keys()):
         raise _bad_shape()
     install_id = _parse_install_id(raw["installId"])
+    source_expense_id: uuid.UUID | None = None
+    if "expenseId" in raw:
+        expense_raw = raw["expenseId"]
+        if expense_raw is not None:
+            if not isinstance(expense_raw, str):
+                raise _bad_shape()
+            source_expense_id = _parse_install_id(expense_raw)
     consent_version = raw["consentVersion"]
     if not isinstance(consent_version, str):
         raise _bad_shape()
@@ -212,7 +223,15 @@ def _parse_example_fields(
     prediction = _validate_expense_fields(raw["prediction"])
     correction = _validate_expense_fields(raw["correction"])
     model_versions = _validate_model_versions(raw["modelVersions"])
-    return install_id, consent_version, transcript, prediction, correction, model_versions
+    return (
+        install_id,
+        source_expense_id,
+        consent_version,
+        transcript,
+        prediction,
+        correction,
+        model_versions,
+    )
 
 
 def _require_active_consent(install_id: uuid.UUID, consent_version: str) -> None:
@@ -238,9 +257,15 @@ def _require_active_consent(install_id: uuid.UUID, consent_version: str) -> None
 
 @router.post("/v1/examples")
 def post_example(body: dict):
-    install_id, consent_version, transcript, prediction, correction, model_versions = (
-        _parse_example_fields(body)
-    )
+    (
+        install_id,
+        source_expense_id,
+        consent_version,
+        transcript,
+        prediction,
+        correction,
+        model_versions,
+    ) = _parse_example_fields(body)
     _require_active_consent(install_id, consent_version)
     _reject_extra_top_level_keys(body)
 
@@ -258,22 +283,54 @@ def post_example(body: dict):
     conn = connect()
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO training_examples (
-                  id, install_id, transcript, prediction, correction, model_versions
+            if source_expense_id is not None:
+                cur.execute(
+                    """
+                    INSERT INTO training_examples (
+                      id, install_id, source_expense_id, transcript,
+                      prediction, correction, model_versions
+                    )
+                    VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb)
+                    ON CONFLICT (install_id, source_expense_id)
+                    WHERE source_expense_id IS NOT NULL
+                    DO UPDATE SET
+                      transcript = EXCLUDED.transcript,
+                      prediction = EXCLUDED.prediction,
+                      correction = EXCLUDED.correction,
+                      model_versions = EXCLUDED.model_versions,
+                      updated_at = now()
+                    RETURNING id
+                    """,
+                    (
+                        example_id,
+                        install_id,
+                        source_expense_id,
+                        scrubbed["transcript"],
+                        json.dumps(scrubbed["prediction"]),
+                        json.dumps(scrubbed["correction"]),
+                        json.dumps(model_versions),
+                    ),
                 )
-                VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb)
-                """,
-                (
-                    example_id,
-                    install_id,
-                    scrubbed["transcript"],
-                    json.dumps(scrubbed["prediction"]),
-                    json.dumps(scrubbed["correction"]),
-                    json.dumps(model_versions),
-                ),
-            )
+                example_id = cur.fetchone()[0]
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO training_examples (
+                      id, install_id, transcript, prediction, correction, model_versions
+                    )
+                    VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb)
+                    RETURNING id
+                    """,
+                    (
+                        example_id,
+                        install_id,
+                        scrubbed["transcript"],
+                        json.dumps(scrubbed["prediction"]),
+                        json.dumps(scrubbed["correction"]),
+                        json.dumps(model_versions),
+                    ),
+                )
+                example_id = cur.fetchone()[0]
         conn.commit()
     finally:
         conn.close()

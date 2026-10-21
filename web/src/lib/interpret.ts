@@ -5,6 +5,7 @@ import {
   withInferenceDeviceFallback,
   type InferenceDevice,
 } from "./onnxEnv";
+import type { CaptureStage } from "./captureProgress";
 import { deliveryEnvFor, getActiveVersions, type DeliveryLoad } from "./updates";
 
 type GenPipe = {
@@ -13,6 +14,20 @@ type GenPipe = {
 };
 
 let cached: { key: string; pipe: GenPipe } | null = null;
+
+export function isInterpreterPipelineLoaded(): boolean {
+  return cached !== null;
+}
+
+export async function disposeLoadedInterpreterPipeline(): Promise<void> {
+  if (!cached) return;
+  try {
+    await cached.pipe.dispose?.();
+  } catch {
+    // ignore
+  }
+  cached = null;
+}
 let thinkingFallbackNoted = false;
 
 const THINKING_FALLBACK_LINE =
@@ -20,11 +35,13 @@ const THINKING_FALLBACK_LINE =
 
 function userPrompt(transcript: string, extra?: string): string {
   let text =
-    "Extract category, merchant, and date from the utterance. " +
-    'Reply with one JSON object and nothing else: {"category":"...","merchant":null,"date":null}. ' +
+    "Extract category, item, merchant, and date from the utterance. " +
+    'Reply with one JSON object and nothing else: {"category":"...","item":null,"merchant":null,"date":null}. ' +
     "Do not include amount or currency. " +
     "category must be one of food, transport, bills, shopping, health, other. " +
-    "merchant is a string or null. date is YYYY-MM-DD or null.\n\n" +
+    "item is what was bought (e.g. bakso, kopi), string or null — not the store name. " +
+    "merchant is the vendor or place (e.g. warteg, Indomaret), string or null. " +
+    "date is YYYY-MM-DD or null.\n\n" +
     `Utterance: ${transcript}`;
   if (extra) text += `\n${extra}`;
   return text;
@@ -88,7 +105,11 @@ function assignEnv(delivery: DeliveryLoad): void {
   if (delivery.localModelPath !== undefined) env.localModelPath = delivery.localModelPath;
 }
 
-async function loadPipe(device: InferenceDevice, delivery: DeliveryLoad): Promise<GenPipe> {
+async function loadPipe(
+  device: InferenceDevice,
+  delivery: DeliveryLoad,
+  onProgress?: (loaded: number, total?: number) => void,
+): Promise<GenPipe> {
   assignEnv(delivery);
   const dtype = modelChoice.interpreter_dtype as "q8" | "q4" | "q4f16";
   const key = `${delivery.modelId}:${dtype}:${device}`;
@@ -104,27 +125,51 @@ async function loadPipe(device: InferenceDevice, delivery: DeliveryLoad): Promis
   const pipe = (await pipeline("text-generation", delivery.modelId, {
     dtype,
     device,
+    progress_callback: onProgress
+      ? (data) => {
+          const info = data as { loaded?: number; total?: number };
+          if (typeof info.loaded === "number") onProgress(info.loaded, info.total);
+        }
+      : undefined,
   })) as unknown as GenPipe;
   cached = { key, pipe };
   return pipe;
 }
 
-export async function completeInterpreter(transcript: string, repairError?: string): Promise<string> {
+export async function preloadInterpreter(
+  onProgress?: (loaded: number, total?: number) => void,
+): Promise<void> {
+  if (isInterpreterPipelineLoaded()) return;
+  const active = await getActiveVersions();
+  const delivery = deliveryEnvFor("interpreter", active.interpreter, modelChoice);
+  if (delivery.skip) return;
+  configureLocalOnnxEnv();
+  await withInferenceDeviceFallback((device) => loadPipe(device, delivery, onProgress));
+}
+
+export async function completeInterpreter(
+  transcript: string,
+  repairError?: string,
+  opts?: { onStage?: (stage: CaptureStage) => void },
+): Promise<string> {
   const active = await getActiveVersions();
   const delivery = deliveryEnvFor("interpreter", active.interpreter, modelChoice);
   if (delivery.skip) {
     throw new Error("interpreter is rules-only");
   }
   configureLocalOnnxEnv();
-  const pipe = await withInferenceDeviceFallback((device) => loadPipe(device, delivery));
+  const emitStage = opts?.onStage;
+  if (!isInterpreterPipelineLoaded()) emitStage?.("loading_interpreter");
+  const pipe = await withInferenceDeviceFallback((device) => loadPipe(device, delivery, undefined));
+  emitStage?.("interpreting");
 
   const extra = repairError ? repairError : undefined;
-  const opts: Record<string, unknown> = { max_new_tokens: 256, do_sample: false };
+  const genOpts: Record<string, unknown> = { max_new_tokens: 256, do_sample: false };
   const qwen = modelChoice.interpreter === "qwen3-0.6b";
-  if (qwen) opts.tokenizer_encode_kwargs = { enable_thinking: false };
+  if (qwen) genOpts.tokenizer_encode_kwargs = { enable_thinking: false };
 
   try {
-    const output = await pipe(messagesFor(transcript, extra), opts);
+    const output = await pipe(messagesFor(transcript, extra), genOpts);
     return assistantText(output);
   } catch (err) {
     if (!qwen) throw err;

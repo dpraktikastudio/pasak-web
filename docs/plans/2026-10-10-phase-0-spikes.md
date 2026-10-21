@@ -10,7 +10,7 @@ The repo has no application code. `models/whisper-base/v1.0.0/` holds tokenizer 
 
 Scripts run on Node.js 22 with `@huggingface/transformers`. On Node that package binds `onnxruntime-node`. `device: 'wasm'` throws there, because `wasm` is only an execution provider in the browser build (`onnxruntime-web`). Node benches set `device: 'cpu'`. They cover valid-JSON rate, amount accuracy, and download size. They do not cover ONNX Runtime Web, WebGPU, `shader-f16`, or a phone. Those are the browser follow-up at the end of this phase, still not the Vite app.
 
-The amount gate uses the rules normalizer, never the language model. The language model is scored on category, merchant, date, and valid JSON. It is not asked for amount or currency. Amount accuracy reported next to an interpreter candidate is `normalizeAmount` on that same text.
+The amount gate uses the rules normalizer, never the language model. The language model is scored on category, item, merchant, date, and valid JSON. It is not asked for amount or currency. **Item** is what was bought; **merchant** is the vendor or place. Amount accuracy reported next to an interpreter candidate is `normalizeAmount` on that same text.
 
 Layout inside `playground/`:
 
@@ -20,7 +20,7 @@ Layout inside `playground/`:
 - `playground/src/amount.test.js` — table tests.
 - `playground/src/dates.js` — `resolveDate(transcript, spokenOn)`.
 - `playground/src/dates.test.js`.
-- `playground/src/score.js` — exports `scoreAmounts` and the category, merchant, and date scorers. It does not open files.
+- `playground/src/score.js` — exports `scoreAmounts` and the category, item, merchant, and date scorers. It does not open files.
 - `playground/src/schema.js` — golden-line checks and interpreter JSON checks.
 - `playground/scripts/validate-golden.mjs` — checks `playground/golden/v0/examples.jsonl` and the WAV headers. No model download.
 - `playground/scripts/score-golden.mjs` — scores a predictions JSONL. No model download and no WAV reads.

@@ -1,20 +1,41 @@
-import { useEffect, useRef, useState } from "react";
-import { startPushToTalk } from "./lib/audio";
-import { canSync, isConsentGranted, optIn, revokeConsent, syncCorrection } from "./lib/consent";
-import { listExpenses, putExpense, saveCorrection } from "./lib/db";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { useTheme, type ThemePreference } from "./hooks/useTheme";
+import { startPushToTalk, type TalkResult } from "./lib/audio";
+import {
+  isConsentGranted,
+  needsShareUpdate,
+  optIn,
+  revokeConsent,
+  shareExpense,
+  shareFingerprint,
+} from "./lib/consent";
+import { CaptureTimeSpent } from "./components/CaptureTimeSpent";
+import { HistoryExpenseDetail } from "./components/HistoryExpenseDetail";
+import { listExpenses, PASAK_DATA_CLEARED_EVENT, putExpense, updateExpense } from "./lib/db";
+import { createAutoSaveScheduler } from "./lib/reviewAutoSave";
 import { localTodayIso } from "./lib/dates";
-import { interpreterVersionLabel, modelChoice, sttVersionLabel } from "./lib/modelChoice";
+import type { CaptureProgressSnapshot } from "./lib/captureProgress";
+import type { CaptureTimingReport } from "./lib/captureTiming";
+import { DeviceStatusCards } from "./components/DeviceStatusCards";
+import { TrainingSharingPanel } from "./components/TrainingSharingPanel";
+import { modelChoice } from "./lib/modelChoice";
+import { notifyDeviceStatusRefresh } from "./lib/modelStatus";
+import { formatMoney, sumIdrExpenses } from "./lib/formatMoney";
 import { expenseModelVersions, getActiveVersions } from "./lib/updates";
-import type { Category, ExpenseFields, ExpenseRecord } from "./lib/types";
+import type { ExpenseFields, ExpenseRecord } from "./lib/types";
 
-const CATEGORIES: Category[] = ["food", "transport", "bills", "shopping", "health", "other"];
-const FIELD_KEYS: (keyof ExpenseFields)[] = ["amount", "currency", "category", "merchant", "date"];
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
 
 function fieldsEqual(a: ExpenseFields, b: ExpenseFields): boolean {
   return (
     a.amount === b.amount &&
     a.currency === b.currency &&
     a.category === b.category &&
+    a.item === b.item &&
     a.merchant === b.merchant &&
     a.date === b.date
   );
@@ -25,23 +46,39 @@ function displayDate(stored: string | null, today: string): { value: string; unc
   return { value: today, unconfirmed: true };
 }
 
-function showField(value: string | number | null): string {
-  return value === null ? "null" : String(value);
+function ThemeToggle() {
+  const { preference, setPreference } = useTheme();
+  return (
+    <div className="theme-toggle" role="group" aria-label="Color theme">
+      {THEME_OPTIONS.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          aria-pressed={preference === opt.value}
+          title={`Theme: ${opt.label}`}
+          onClick={() => setPreference(opt.value)}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function App() {
   const [rows, setRows] = useState<ExpenseRecord[]>([]);
   const [status, setStatus] = useState("");
   const [holding, setHolding] = useState(false);
-  const [progress, setProgress] = useState<{ loaded: number; total?: number } | null>(null);
+  const [captureProgress, setCaptureProgress] = useState<CaptureProgressSnapshot | null>(null);
+  const [captureTiming, setCaptureTiming] = useState<CaptureTimingReport | null>(null);
   const [draft, setDraft] = useState<ExpenseRecord | null>(null);
-  const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [form, setForm] = useState<ExpenseFields>({
     amount: null,
     currency: null,
     category: null,
+    item: null,
     merchant: null,
     date: null,
   });
@@ -49,11 +86,21 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [consentGranted, setConsentGranted] = useState(false);
   const [consentBusy, setConsentBusy] = useState(false);
+  const [sharingId, setSharingId] = useState<string | null>(null);
   const [clipUrl, setClipUrl] = useState<string | null>(null);
   const session = useRef<ReturnType<typeof startPushToTalk> | null>(null);
+  const captureGeneration = useRef(0);
+  const autoSaveScheduler = useRef(createAutoSaveScheduler());
+  const draftRef = useRef(draft);
+  const formRef = useRef(form);
+  const dateTouchedRef = useRef(dateTouched);
   const savingRef = useRef(false);
+  draftRef.current = draft;
+  formRef.current = form;
+  dateTouchedRef.current = dateTouched;
   const meterRef = useRef<HTMLCanvasElement>(null);
   const levelsRef = useRef<number[]>([]);
+  const meterBarColorRef = useRef("#3a9b8f");
   const today = localTodayIso();
 
   async function reload() {
@@ -66,6 +113,15 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const onDataCleared = () => {
+      void reload();
+      void isConsentGranted().then(setConsentGranted);
+    };
+    window.addEventListener(PASAK_DATA_CLEARED_EVENT, onDataCleared);
+    return () => window.removeEventListener(PASAK_DATA_CLEARED_EVENT, onDataCleared);
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (clipUrl) URL.revokeObjectURL(clipUrl);
     };
@@ -74,17 +130,6 @@ export function App() {
   const amountOk = form.amount !== null && Number.isInteger(form.amount) && form.amount >= 0;
   const currencyOk = Boolean(form.currency && form.currency.trim());
   const canSave = amountOk && currencyOk && !saving && draft !== null;
-
-  function formForSave(): ExpenseFields {
-    if (!draft) return form;
-    return {
-      amount: form.amount,
-      currency: form.currency,
-      category: form.category,
-      merchant: form.merchant === "" ? null : form.merchant,
-      date: dateTouched ? form.date : draft.prediction.date,
-    };
-  }
 
   useEffect(() => {
     if (!holding) {
@@ -96,6 +141,10 @@ export function App() {
       }
       return;
     }
+    const barColor = getComputedStyle(document.documentElement)
+      .getPropertyValue("--meter-bar")
+      .trim();
+    meterBarColorRef.current = barColor || "#3a9b8f";
     let raf = 0;
     const draw = () => {
       const canvas = meterRef.current;
@@ -109,7 +158,7 @@ export function App() {
       const h = canvas.height;
       const levels = levelsRef.current;
       ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = "#111";
+      ctx.fillStyle = meterBarColorRef.current;
       const barW = w / 80;
       for (let i = 0; i < levels.length; i++) {
         const amp = Math.min(1, levels[i] * 18);
@@ -122,84 +171,227 @@ export function App() {
     return () => cancelAnimationFrame(raf);
   }, [holding]);
 
-  async function stopRecording() {
-    const s = session.current;
-    session.current = null;
-    setHolding(false);
-    if (!s) return;
-    setBusy(true);
+  function cancelAutoSave() {
+    autoSaveScheduler.current.cancel();
+  }
+
+  function clearDraftPanel() {
+    cancelAutoSave();
+    setClipUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setDraft(null);
+    setCaptureTiming(null);
+    setForm({
+      amount: null,
+      currency: null,
+      category: null,
+      item: null,
+      merchant: null,
+      date: null,
+    });
+    setDateTouched(false);
+  }
+
+  function canSaveFromRefs(): boolean {
+    const d = draftRef.current;
+    if (!d || savingRef.current) return false;
+    const f = formRef.current;
+    const amountOk =
+      f.amount !== null && Number.isInteger(f.amount) && f.amount >= 0;
+    const currencyOk = Boolean(f.currency && f.currency.trim());
+    return amountOk && currencyOk;
+  }
+
+  function formForSaveFromRefs(): ExpenseFields | null {
+    const d = draftRef.current;
+    if (!d) return null;
+    const f = formRef.current;
+    return {
+      amount: f.amount,
+      currency: f.currency,
+      category: f.category,
+      item: f.item === "" ? null : f.item,
+      merchant: f.merchant === "" ? null : f.merchant,
+      date: dateTouchedRef.current ? f.date : d.prediction.date,
+    };
+  }
+
+  async function applyCaptureSuccess(result: TalkResult & { ok: true }, generation: number) {
+    if (generation !== captureGeneration.current) return;
+    const next: ExpenseRecord = {
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      transcript: result.transcript,
+      prediction: result.prediction,
+      correction: null,
+      modelVersions: expenseModelVersions(await getActiveVersions(), modelChoice),
+    };
+    setClipUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return result.clipUrl;
+    });
+    setDraft(next);
+    setCaptureTiming(result.timing ?? null);
+    setOpenId(null);
+    setForm({ ...result.prediction });
+    setDateTouched(false);
+    setStatus("");
+    notifyDeviceStatusRefresh();
+  }
+
+  async function finishCapture(promise: Promise<TalkResult>, generation: number) {
     try {
-      const result = await s.stop();
-      setProgress(null);
+      const result = await promise;
+      if (generation !== captureGeneration.current) return;
       if (!result.ok) {
+        setCaptureTiming(null);
         setStatus(result.message);
         return;
       }
-      const next: ExpenseRecord = {
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-        transcript: result.transcript,
-        prediction: result.prediction,
-        correction: null,
-        modelVersions: expenseModelVersions(await getActiveVersions(), modelChoice),
-      };
-      if (clipUrl) URL.revokeObjectURL(clipUrl);
-      setClipUrl(result.clipUrl);
-      setDraft(next);
-      setSaved(false);
-      setOpenId(null);
-      setForm({ ...result.prediction });
-      setDateTouched(false);
+      await applyCaptureSuccess(result, generation);
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Capture failed.");
+      if (generation === captureGeneration.current) {
+        setCaptureTiming(null);
+        setStatus(err instanceof Error ? err.message : "Capture failed.");
+      }
     } finally {
-      setBusy(false);
+      if (generation === captureGeneration.current) {
+        setHolding(false);
+        setBusy(false);
+        setCaptureProgress(null);
+        session.current = null;
+      }
+    }
+  }
+
+  async function saveAndClear() {
+    const d = draftRef.current;
+    if (!d || savingRef.current) return;
+    const next = formForSaveFromRefs();
+    if (!next) return;
+    const amountOk = next.amount !== null && Number.isInteger(next.amount) && next.amount >= 0;
+    const currencyOk = Boolean(next.currency && next.currency.trim());
+    if (!amountOk || !currencyOk) return;
+
+    const correction = fieldsEqual(next, d.prediction) ? null : next;
+    savingRef.current = true;
+    setSaving(true);
+    cancelAutoSave();
+    try {
+      await putExpense({
+        ...d,
+        correction,
+      });
+      clearDraftPanel();
+      setStatus("Saved");
+      await reload();
+      notifyDeviceStatusRefresh();
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Save failed.");
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   }
 
   function onRecordClick() {
     if (busy) return;
     if (holding) {
-      void stopRecording();
+      session.current?.stop();
       return;
     }
+    cancelAutoSave();
+    setCaptureTiming(null);
     setStatus("");
+    const generation = ++captureGeneration.current;
     setHolding(true);
     levelsRef.current = [];
-    session.current = startPushToTalk({
-      onProgress: (loaded, total) => setProgress({ loaded, total }),
+    const capture = startPushToTalk({
+      onCaptureEnd: () => {
+        if (generation !== captureGeneration.current) return;
+        setHolding(false);
+        setBusy(true);
+      },
+      onCaptureStage: setCaptureProgress,
       onLevel: (level) => {
         const next = levelsRef.current;
         next.push(level);
         if (next.length > 80) next.shift();
       },
     });
+    session.current = capture;
+    void finishCapture(capture.finished, generation);
   }
 
-  async function onOptIn() {
+  useEffect(() => {
+    return () => {
+      cancelAutoSave();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!draft) {
+      cancelAutoSave();
+      return;
+    }
+    const draftId = draft.id;
+    autoSaveScheduler.current.schedule(() => {
+      if (draftRef.current?.id !== draftId) return;
+      if (!canSaveFromRefs()) {
+        setStatus("Add amount and currency to save.");
+        return;
+      }
+      void saveAndClear();
+    });
+    return () => cancelAutoSave();
+  }, [draft, form, dateTouched, draft?.transcript]);
+
+  async function onOptIn(): Promise<boolean> {
     setConsentBusy(true);
     try {
       await optIn();
       setConsentGranted(true);
       setStatus("");
+      return true;
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Opt-in failed.");
+      return false;
     } finally {
       setConsentBusy(false);
     }
   }
 
-  async function onSyncRow(row: ExpenseRecord) {
-    setConsentBusy(true);
+  async function onShareExpense(row: ExpenseRecord) {
+    setSharingId(row.id);
     try {
-      const result = await syncCorrection(row);
-      if (result.error) setStatus(result.error);
-      else setStatus("");
+      const result = await shareExpense(row);
+      if (result.error) {
+        setStatus(result.error);
+        return;
+      }
+      const fp = shareFingerprint(row);
+      await updateExpense(row.id, {
+        lastSharedAt: new Date().toISOString(),
+        sharedExampleId: result.id ?? row.sharedExampleId ?? null,
+        sharedFingerprint: fp,
+      });
+      await reload();
+      setStatus("");
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Sync failed.");
+      setStatus(err instanceof Error ? err.message : "Share failed.");
     } finally {
-      setConsentBusy(false);
+      setSharingId(null);
     }
+  }
+
+  async function onHistorySave(
+    id: string,
+    patch: { transcript: string; correction: ExpenseFields | null },
+  ) {
+    await updateExpense(id, patch);
+    await reload();
   }
 
   async function onRevoke() {
@@ -210,6 +402,7 @@ export function App() {
       else {
         setConsentGranted(false);
         setStatus("");
+        await reload();
       }
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Revoke failed.");
@@ -218,226 +411,279 @@ export function App() {
     }
   }
 
-  async function onSave() {
-    if (!canSave || !draft || savingRef.current) return;
-    const next = formForSave();
-    const correction = fieldsEqual(next, draft.prediction) ? null : next;
-    savingRef.current = true;
-    setSaving(true);
-    try {
-      if (!saved) {
-        await putExpense({
-          ...draft,
-          correction,
-        });
-        setSaved(true);
-      } else {
-        await saveCorrection(draft.id, correction);
-      }
-      setDraft({ ...draft, correction });
-      await reload();
-    } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Save failed.");
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-    }
+  function onSaveNow() {
+    if (!canSave) return;
+    void saveAndClear();
   }
 
   const dateUi = displayDate(dateTouched ? form.date : (draft?.prediction.date ?? null), today);
   const amountErr = draft && !amountOk ? "Amount must be a whole number 0 or greater." : null;
   const currencyErr = draft && !currencyOk ? "Currency is required." : null;
 
+  const historyFields = rows.map((row) => row.correction ?? row.prediction);
+  const totalIdr = sumIdrExpenses(historyFields);
+
   return (
-    <main>
-      <h1>pasak-web</h1>
-      <p>
-        Tap to record, speak, tap again to stop. Models stay on this device (
-        <code>{sttVersionLabel}</code>
-        {interpreterVersionLabel ? `, ${interpreterVersionLabel}` : ", rules-only"}).
-      </p>
-      <button
-        type="button"
-        disabled={busy}
-        aria-pressed={holding}
-        onClick={onRecordClick}
-      >
-        {holding ? "Tap to stop" : busy ? "Transcribing…" : "Tap to record"}
-      </button>
-      {busy ? (
-        <p className="transcribe-status" role="status" aria-live="polite" aria-busy="true">
-          <span className="spinner" aria-hidden />
-          Transcribing… Whisper can take a while on first load.
-        </p>
-      ) : null}
-      <canvas
-        ref={meterRef}
-        className="level-meter"
-        width={320}
-        height={48}
-        hidden={!holding}
-        aria-hidden
-      />
-      {progress ? (
-        <p>
-          {progress.total != null ? (
-            <progress value={progress.loaded} max={progress.total} />
-          ) : (
-            <progress />
-          )}{" "}
-          {progress.loaded}
-          {progress.total != null ? ` / ${progress.total}` : " bytes"}
-        </p>
-      ) : null}
-      {status ? <p role="status">{status}</p> : null}
-
-      {draft ? (
-        <section>
-          <h2>Current</h2>
-          {clipUrl ? (
-            <label>
-              Playback (16 kHz clip sent to Whisper, this session only)
-              <audio controls src={clipUrl} />
-            </label>
-          ) : (
-            <p>No clip in memory. Record again to hear what Whisper got.</p>
-          )}
-          <label>
-            Transcript
-            <textarea
-              value={draft.transcript}
-              onChange={(e) => setDraft({ ...draft, transcript: e.target.value })}
-            />
-          </label>
-          <label>
-            Amount
-            <input
-              inputMode="numeric"
-              value={form.amount ?? ""}
-              onChange={(e) => {
-                const v = e.target.value.replace(/\D/g, "");
-                setForm({ ...form, amount: v === "" ? null : Number(v) });
-              }}
-            />
-          </label>
-          {amountErr ? <p role="alert">{amountErr}</p> : null}
-          <label>
-            Currency
-            <input
-              value={form.currency ?? ""}
-              onChange={(e) => setForm({ ...form, currency: e.target.value || null })}
-            />
-          </label>
-          {currencyErr ? <p role="alert">{currencyErr}</p> : null}
-          <label>
-            Category
-            <select
-              value={form.category ?? ""}
-              onChange={(e) =>
-                setForm({ ...form, category: (e.target.value || null) as Category | null })
-              }
-            >
-              <option value="">(none)</option>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Merchant
-            <input
-              value={form.merchant ?? ""}
-              onChange={(e) => setForm({ ...form, merchant: e.target.value || null })}
-            />
-          </label>
-          <label>
-            Date {dateUi.unconfirmed ? "(today, unconfirmed — not saved until you change it)" : ""}
-            <input
-              type="date"
-              value={dateUi.value}
-              onChange={(e) => {
-                setDateTouched(true);
-                setForm({ ...form, date: e.target.value || null });
-              }}
-            />
-          </label>
-          <button type="button" disabled={!canSave} onClick={() => void onSave()}>
-            Save
-          </button>
+    <main className="app-shell">
+      <header className="app-header">
+        <div className="app-header__brand">
+          <h1>pasak-web</h1>
           <p>
-            <button type="button" disabled={consentBusy} onClick={() => void onOptIn()}>
-              opt in
-            </button>{" "}
-            <button
-              type="button"
-              disabled={consentBusy || !canSync(draft, consentGranted)}
-              onClick={() => void onSyncRow(draft)}
-            >
-              sync this correction
-            </button>{" "}
-            <button type="button" disabled={consentBusy} onClick={() => void onRevoke()}>
-              revoke
-            </button>
+            Tap to record and speak. Tap again to finish early, or pause about 2 seconds when done.
+            Models stay on this device.
           </p>
-        </section>
-      ) : null}
+        </div>
+        <ThemeToggle />
+      </header>
 
-      <section>
-        <h2>Past</h2>
-        <ul>
-          {rows.map((row) => {
-            const shown = row.correction ?? row.prediction;
-            const d = displayDate(shown.date, today);
-            return (
-              <li key={row.id}>
-                <button type="button" onClick={() => setOpenId(row.id === openId ? null : row.id)}>
-                  {shown.amount ?? "—"} {shown.currency ?? ""} {shown.category ?? ""}{" "}
-                  {d.unconfirmed ? "(today unconfirmed)" : d.value}
-                </button>
-                {openId === row.id ? (
-                  <div>
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>field</th>
-                          <th>prediction</th>
-                          <th>correction</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {FIELD_KEYS.map((key) => (
-                          <tr key={key}>
-                            <td>{key}</td>
-                            <td>{showField(row.prediction[key])}</td>
-                            <td>{row.correction ? showField(row.correction[key]) : "null"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <p>
-                      <button type="button" disabled={consentBusy} onClick={() => void onOptIn()}>
-                        opt in
-                      </button>{" "}
-                      <button
-                        type="button"
-                        disabled={consentBusy || !canSync(row, consentGranted)}
-                        onClick={() => void onSyncRow(row)}
-                      >
-                        sync this correction
-                      </button>{" "}
-                      <button type="button" disabled={consentBusy} onClick={() => void onRevoke()}>
-                        revoke
-                      </button>
-                    </p>
-                  </div>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-      </section>
+      <DeviceStatusCards actionsLocked={busy || consentBusy || sharingId !== null} />
+
+      <div className="app-columns">
+        <div className="col-capture">
+          <section className="panel">
+            <h2>Record</h2>
+            <div className="capture-block">
+              <button
+                type="button"
+                className="btn-record"
+                disabled={busy}
+                aria-pressed={holding}
+                aria-busy={busy && !holding}
+                onClick={onRecordClick}
+              >
+                {holding ? "Tap to finish" : "Tap to record"}
+              </button>
+              {holding ? (
+                <p className="capture-listening" role="status" aria-live="polite">
+                  Listening…
+                </p>
+              ) : null}
+              {busy && !holding ? (
+                <div className="transcribe-status" role="status" aria-live="polite" aria-busy="true">
+                  <p className="transcribe-status__row">
+                    <span className="spinner" aria-hidden />
+                    <span>{captureProgress?.label ?? "Processing…"}</span>
+                    {captureProgress ? (
+                      <span className="capture-step-hint">
+                        Step {captureProgress.step} of {captureProgress.steps}
+                      </span>
+                    ) : null}
+                  </p>
+                  {captureProgress ? (
+                    <progress
+                      className="capture-step-bar"
+                      value={captureProgress.step}
+                      max={captureProgress.steps}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+              {holding ? (
+                <canvas
+                  ref={meterRef}
+                  className="level-meter"
+                  width={320}
+                  height={48}
+                  aria-hidden
+                />
+              ) : null}
+              {status ? (
+                <p className="status-message" role="status">
+                  {status}
+                </p>
+              ) : null}
+            </div>
+          </section>
+
+          {draft ? (
+            <section className="panel">
+              <h2>Current</h2>
+              {clipUrl ? (
+                <label>
+                  Playback (16 kHz clip sent to Whisper, this session only)
+                  <audio controls src={clipUrl} />
+                </label>
+              ) : (
+                <p className="empty-hint">No clip in memory. Record again to hear what Whisper got.</p>
+              )}
+              <label>
+                Transcript
+                <textarea
+                  value={draft.transcript}
+                  onChange={(e) => setDraft({ ...draft, transcript: e.target.value })}
+                />
+              </label>
+              <label>
+                Amount
+                <input
+                  inputMode="numeric"
+                  value={form.amount ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, "");
+                    setForm({ ...form, amount: v === "" ? null : Number(v) });
+                  }}
+                />
+              </label>
+              {amountErr ? <p role="alert">{amountErr}</p> : null}
+              {form.amount !== null && currencyOk ? (
+                <p className="progress-line">{formatMoney(form.amount, form.currency)}</p>
+              ) : null}
+              <label>
+                Currency
+                <input
+                  value={form.currency ?? ""}
+                  onChange={(e) => setForm({ ...form, currency: e.target.value || null })}
+                />
+              </label>
+              {currencyErr ? <p role="alert">{currencyErr}</p> : null}
+              <label>
+                Item
+                <input
+                  value={form.item ?? ""}
+                  onChange={(e) => setForm({ ...form, item: e.target.value || null })}
+                />
+              </label>
+              <label>
+                Date{" "}
+                <input
+                  type="date"
+                  value={dateUi.value}
+                  onChange={(e) => {
+                    setDateTouched(true);
+                    setForm({ ...form, date: e.target.value || null });
+                  }}
+                />
+              </label>
+              {captureTiming ? <CaptureTimeSpent report={captureTiming} /> : null}
+              <button type="button" disabled={!canSave} onClick={() => onSaveNow()}>
+                Save now
+              </button>
+            </section>
+          ) : (
+            <section className="panel">
+              <p className="empty-hint">Record a expense to review transcript and fields here.</p>
+            </section>
+          )}
+        </div>
+
+        <div className="col-history">
+          <TrainingSharingPanel
+            consentGranted={consentGranted}
+            busy={consentBusy}
+            disabled={busy || sharingId !== null}
+            onEnable={() => void onOptIn()}
+            onDisable={() => void onRevoke()}
+          />
+          <section className="panel">
+            <h2>Past</h2>
+            {rows.length === 0 ? (
+              <p className="empty-hint">No expenses yet.</p>
+            ) : (
+              <>
+                <div className="history-analytics">
+                  <p className="history-analytics__label">Total expenses (IDR)</p>
+                  <p className="history-analytics__value">{formatMoney(totalIdr, "IDR")}</p>
+                </div>
+                <div className="expenses-table-wrap">
+                  <table className="expenses-table">
+                    <thead>
+                      <tr>
+                        <th>Amount</th>
+                        <th>Item</th>
+                        <th>Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row) => {
+                        const shown = row.correction ?? row.prediction;
+                        const d = displayDate(shown.date, today);
+                        const isOpen = openId === row.id;
+                        return (
+                          <Fragment key={row.id}>
+                            <tr
+                              className={`expenses-table__row${isOpen ? " expenses-table__row--open" : ""}`}
+                              tabIndex={0}
+                              role="button"
+                              aria-expanded={isOpen}
+                              onClick={() => setOpenId(isOpen ? null : row.id)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setOpenId(isOpen ? null : row.id);
+                                }
+                              }}
+                            >
+                              <td className="amount-cell">{formatMoney(shown.amount, shown.currency)}</td>
+                              <td>{shown.item ?? "—"}</td>
+                              <td className="expenses-table__date-cell">
+                                <span className="expenses-table__date-text">
+                                  {d.unconfirmed ? `${d.value}*` : d.value}
+                                </span>
+                                {consentGranted && row.lastSharedAt ? (
+                                  <span
+                                    className={`expenses-table__shared-icon${
+                                      needsShareUpdate(row)
+                                        ? " expenses-table__shared-icon--stale"
+                                        : ""
+                                    }`}
+                                    title={
+                                      needsShareUpdate(row)
+                                        ? "Shared; local changes not sent yet"
+                                        : "Shared for training"
+                                    }
+                                    aria-label={
+                                      needsShareUpdate(row)
+                                        ? "Shared, update pending"
+                                        : "Shared for training"
+                                    }
+                                  >
+                                    <svg
+                                      width="14"
+                                      height="14"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      aria-hidden
+                                    >
+                                      <path d="M4 14.9A7 7 0 1 1 15.7 8.3" />
+                                      <path d="M12 12v9" />
+                                      <path d="m16 16-4-4-4 4" />
+                                    </svg>
+                                  </span>
+                                ) : null}
+                              </td>
+                            </tr>
+                            {isOpen ? (
+                              <tr key={`${row.id}-detail`} className="expenses-table__detail">
+                                <td colSpan={3}>
+                                  <div className="expenses-table__detail-inner">
+                                    <HistoryExpenseDetail
+                                      row={row}
+                                      consentGranted={consentGranted}
+                                      consentBusy={consentBusy}
+                                      shareBusy={sharingId === row.id}
+                                      onSave={(patch) => onHistorySave(row.id, patch)}
+                                      onShare={(record) => onShareExpense(record)}
+                                    />
+                                  </div>
+                                </td>
+                              </tr>
+                            ) : null}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="progress-line">* date unconfirmed (defaults to today)</p>
+              </>
+            )}
+          </section>
+        </div>
+      </div>
     </main>
   );
 }

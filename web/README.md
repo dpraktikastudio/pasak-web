@@ -7,12 +7,23 @@ Weights are **not in git**. They live in repo `models/` (gitignored). Phase 0 `s
 ## What it does
 
 - Record (press-and-hold), silence stop, 16 kHz PCM, no `MediaRecorder`
-- `normalizeAmount` / `resolveDate`; interpreter skipped while Phase 0 is `rules-only`
+- `normalizeAmount` / `resolveDate`; optional on-device interpreter when `docs/decisions/phase-0-model-choice.md` names a model (not `rules-only`) and `interpreter_dir` exists under repo `models/`
 - IndexedDB `pasak`: `expenses` plus `meta` (`activeVersions` / `pendingVersions`)
 - Production only: service worker (`/sw.js`) caches the shell, `/models/`, `/ort/`, and (Phase 2) `pasak-models`
 - Optional: `VITE_MANIFEST_URL` → fetch FastAPI manifest, download files from `baseUrl`, apply on **next** load
 
 `vite dev` does **not** register the service worker. Offline and Phase 2 cache checks use `vite preview`.
+
+## Docker
+
+Production-style static image (nginx, `$PORT` default `8080`):
+
+```powershell
+docker build -t pasak-web --build-arg VITE_MANIFEST_URL=http://127.0.0.1:8000/v1/manifest .
+docker run --rm -p 8080:8080 pasak-web
+```
+
+Weights are not in the image. For local STT, mount repo `models/` at `/usr/share/nginx/html/models` (see root `compose.yaml`). On Railway, set build arg `VITE_MANIFEST_URL` and serve weights from R2 via manifest.
 
 ## Install
 

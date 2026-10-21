@@ -1,10 +1,53 @@
 # Pasak
 
-Voice-first expense tracker for Indonesian speech. Recognition and extraction are meant to run **on the device**. Audio does not leave the phone in the default product path.
+Voice-first expense tracker for Indonesian speech. Speech recognition and field extraction run **on the device** in the browser. Audio does not leave the phone on the default path.
 
-This repository is early. What is public today is the **constitution**, phase plans, and a **maintainer Python package** used to collect labeled clips and fine-tune Whisper-small. The product web app and model weights are not in git.
+Optional server: model manifest, consent, and scrubbed text examples for training—not inference.
 
-## Current progress (2026-10-14)
+## Repository layout
+
+| Path | Role |
+|------|------|
+| [`web/`](web/README.md) | Vite + React PWA (Whisper ONNX, IndexedDB, service worker) |
+| [`server/`](server/README.md) | FastAPI: manifest, sync, admin CLI, Postgres |
+| [`backend/`](backend/README.md) | Maintainer tooling: golden collect, Whisper fine-tune (Colab), not the product API |
+| [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md) | Product rules (local-first, text-only sync) |
+| [`docs/plans/`](docs/plans/) | Phase plans |
+| [`docs/runbooks/`](docs/runbooks/) | Operator checklists (CDN, deploy) |
+
+**Not in git** (see [`.gitignore`](.gitignore)): `models/` (ONNX weights), `playground/`, `backend/data/`, `backend/results/`, `secret/`, `.env` files.
+
+Do not commit R2 keys, Hugging Face tokens, person audio, or raw transcripts. Keep secrets under `secret/` (ignored).
+
+## Quick start
+
+### Web only (Phase 1)
+
+Requires staged STT under repo `models/whisper-small/spike` (see [web/README.md](web/README.md)).
+
+```powershell
+cd web
+npm install
+npm run dev
+```
+
+### Web + API (Phase 2)
+
+**Docker (recommended smoke test):** from repo root, with `models/` on the host:
+
+```powershell
+docker compose up --build
+```
+
+Web `http://127.0.0.1:8080`, API `http://127.0.0.1:8000`. See [`compose.yaml`](compose.yaml).
+
+**Native:** Postgres via [`server/docker-compose.yml`](server/docker-compose.yml), then [server/README.md](server/README.md) + [web/README.md](web/README.md) (`vite preview` + `VITE_MANIFEST_URL`).
+
+### Maintainer training loop
+
+Collect and fine-tune Whisper — [backend/README.md](backend/README.md). Do not install `backend/` and `server/` in the same Python venv (both packages are named `pasak`).
+
+## Model quality (2026-10-14)
 
 Fine-tune of `openai/whisper-small` for Indonesian expense speech:
 
@@ -14,40 +57,27 @@ Fine-tune of `openai/whisper-small` for Indonesian expense speech:
 | `whisper-small-ft` (FLEURS train) | 17.2% | not scored |
 | `whisper-small-ft-golden` (FLEURS + 80 golden) | **14.4%** | **19 / 20** |
 
-Eval is PyTorch fp32 vs stock, `language=indonesian`. The WER gate is strictly lower than stock. Amounts are a second report. Playground inference uses q8 ONNX and can differ from these numbers.
+Write-up: [docs/reports/2026-10-14-whisper-small-finetune.md](docs/reports/2026-10-14-whisper-small-finetune.md).
 
-Write-up: [docs/reports/2026-10-14-whisper-small-finetune.md](docs/reports/2026-10-14-whisper-small-finetune.md) (Word copy beside it).
+## CI and deployment
 
-## Layout
+- **CI:** GitHub Actions runs tests on push/PR to `main` and `release` ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+- **Images:** [`server/Dockerfile`](server/Dockerfile), [`web/Dockerfile`](web/Dockerfile) (nginx + Vite build).
+- **Production:** Railway—two services from those Dockerfiles; model bytes on R2, not in images. [docs/runbooks/deploy-railway.md](docs/runbooks/deploy-railway.md) (tags, `release` branch, GitHub Actions).
 
+## Verify locally
+
+```powershell
+# web
+cd web; npm test; npm run build
+
+# server (Postgres up first)
+cd server; python -m pytest; python -m ruff check src tests
+
+# backend
+cd backend; pytest; ruff check src tests
 ```
-docs/CONSTITUTION.md     Product rules (local-first, text-only sync)
-docs/plans/              Phase 0–4 and Whisper fine-tune plans
-docs/reports/            Bench write-ups
-backend/                 Maintainer package `pasak` (collect + train/eval/export CLIs)
-```
-
-Not in git (see `.gitignore`): `playground/`, `models/` (ONNX spikes), `backend/data/` (FLEURS WAVs, person golden), `backend/results/` (checkpoints, zips), `backend/.venv/`, `secret/`.
-
-## Maintainer backend
-
-From `backend/` (Python 3.11+):
-
-```
-python -m venv .venv
-.venv\Scripts\pip install -e .
-.venv\Scripts\pytest
-.venv\Scripts\ruff check src tests
-```
-
-Collect loopback only: static repo root `http://127.0.0.1:8765` and `python -m pasak.app` on `127.0.0.1:8767`. Do not use `localhost` or CORS fails. Training is Colab GPU; see `backend/README.md` and `backend/notebooks/finetune-whisper-small.ipynb`.
-
-Do not `pip install -e` this package and later `server/` in the same env (same name `pasak`).
-
-## Privacy
-
-Do not commit R2 keys, Hugging Face tokens, person audio, or transcripts. Put secrets under `secret/` (ignored). Golden and FLEURS audio stay local.
 
 ## License
 
-See [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).

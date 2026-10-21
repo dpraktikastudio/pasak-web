@@ -316,7 +316,7 @@ function skipAtom(s: string, i: number) {
   return j + 1;
 }
 
-function stripDateTime(transcript: string) {
+export function stripDateTime(transcript: string) {
   return String(transcript)
     .toLowerCase()
     .replace(/\btanggal\s+\d+\b/g, " ")

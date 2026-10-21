@@ -4,6 +4,7 @@ export type ExpenseFields = {
   amount: number | null;
   currency: string | null;
   category: Category | null;
+  item: string | null;
   merchant: string | null;
   date: string | null;
 };
@@ -15,4 +16,7 @@ export type ExpenseRecord = {
   prediction: ExpenseFields;
   correction: ExpenseFields | null;
   modelVersions: { stt: string; interpreter: string | null };
+  lastSharedAt?: string | null;
+  sharedExampleId?: string | null;
+  sharedFingerprint?: string | null;
 };

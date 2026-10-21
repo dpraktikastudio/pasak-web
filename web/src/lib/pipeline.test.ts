@@ -1,10 +1,38 @@
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import * as interpret from "./interpret";
+import * as stt from "./stt";
 import { transcribeThenExtract } from "./pipeline";
 
 describe("transcribeThenExtract", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(stt, "isSttPipelineLoaded").mockReturnValue(true);
+    vi.spyOn(interpret, "isInterpreterPipelineLoaded").mockReturnValue(true);
+  });
+
+  test("onCaptureStage emits transcribing then interpreting with mocks", async () => {
+    const stages: string[] = [];
+    await transcribeThenExtract(new Float32Array(1600), 16000, {
+      todayLocalIso: "2026-10-10",
+      transcribe: async () => "beli kopi",
+      interpret: async () =>
+        JSON.stringify({ category: "food", item: "kopi", merchant: null, date: null }),
+      rulesOnly: false,
+      onCaptureStage: (s) => stages.push(s.stage),
+    });
+    expect(stages).toEqual(["transcribing", "interpreting"]);
+  });
+
   test("amount and currency come from normalizeAmount, not interpreter", async () => {
     const interpret = vi.fn(async () =>
-      JSON.stringify({ category: "food", merchant: null, date: null, amount: 1, currency: "USD" }),
+      JSON.stringify({
+        category: "food",
+        item: null,
+        merchant: null,
+        date: null,
+        amount: 1,
+        currency: "USD",
+      }),
     );
     const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
       todayLocalIso: "2026-10-10",
@@ -18,41 +46,21 @@ describe("transcribeThenExtract", () => {
     expect(out.prediction.category).toBe(null);
   });
 
-  test("resolveDate wins over interpreter date", async () => {
+  test("date is always recording day, not transcript or interpreter", async () => {
     const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
       todayLocalIso: "2026-10-10",
       transcribe: async () => "kemarin kopi 15 ribu",
-      interpret: async () => JSON.stringify({ category: "food", merchant: null, date: "2020-01-01" }),
+      interpret: async () =>
+        JSON.stringify({ category: "food", item: null, merchant: null, date: "2020-01-01" }),
       rulesOnly: false,
     });
-    expect(out.prediction.date).toBe("2026-10-09");
-  });
-
-  test("null resolveDate accepts a valid interpreter ISO date", async () => {
-    const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
-      todayLocalIso: "2026-10-10",
-      transcribe: async () => "kopi 15 ribu",
-      interpret: async () => JSON.stringify({ category: "food", merchant: null, date: "2026-10-12" }),
-      rulesOnly: false,
-    });
-    expect(out.prediction.date).toBe("2026-10-12");
-  });
-
-  test("null resolveDate rejects an impossible interpreter date", async () => {
-    const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
-      todayLocalIso: "2026-10-10",
-      transcribe: async () => "kopi 15 ribu",
-      interpret: async () => JSON.stringify({ category: "food", merchant: null, date: "2026-02-31" }),
-      rulesOnly: false,
-    });
-    expect(out.prediction.date).toBe(null);
-    expect(out.prediction.category).toBe("food");
+    expect(out.prediction.date).toBe("2026-10-10");
   });
 
   test("a second JSON value is retried once; category stays null", async () => {
     const interpret = vi.fn(
       async () =>
-        '{"category":"food","merchant":null,"date":null}{"category":"other","merchant":null,"date":null}',
+        '{"category":"food","item":null,"merchant":null,"date":null}{"category":"other","item":null,"merchant":null,"date":null}',
     );
     const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
       todayLocalIso: "2026-10-10",
@@ -81,11 +89,13 @@ describe("transcribeThenExtract", () => {
     expect(out.prediction.category).toBe(null);
     expect(out.prediction.merchant).toBe(null);
     expect(out.prediction.amount).toBe(15000);
-    expect(out.prediction.date).toBe("2026-10-09");
+    expect(out.prediction.date).toBe("2026-10-10");
   });
 
   test("rules-only never calls the interpreter", async () => {
-    const interpret = vi.fn(async () => JSON.stringify({ category: "food", merchant: "x", date: null }));
+    const interpret = vi.fn(async () =>
+      JSON.stringify({ category: "food", item: "x", merchant: "x", date: null }),
+    );
     const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
       todayLocalIso: "2026-10-10",
       transcribe: async () => "beli kopi 15 ribu",
@@ -95,7 +105,39 @@ describe("transcribeThenExtract", () => {
     expect(interpret).not.toHaveBeenCalled();
     expect(out.prediction.category).toBe(null);
     expect(out.prediction.merchant).toBe(null);
+    expect(out.prediction.item).toBe("Kopi");
     expect(out.prediction.amount).toBe(15000);
+  });
+
+  test("rules-only extracts item from transcript", async () => {
+    const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
+      todayLocalIso: "2026-10-10",
+      transcribe: async () => "makan bakso 15 ribu",
+      rulesOnly: true,
+    });
+    expect(out.prediction.item).toBe("Bakso");
+  });
+
+  test("interpreter item wins over rules", async () => {
+    const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
+      todayLocalIso: "2026-10-10",
+      transcribe: async () => "makan bakso 15 ribu",
+      interpret: async () =>
+        JSON.stringify({ category: "food", item: "FromModel", merchant: null, date: null }),
+      rulesOnly: false,
+    });
+    expect(out.prediction.item).toBe("FromModel");
+  });
+
+  test("null interpreter item falls back to rules", async () => {
+    const out = await transcribeThenExtract(new Float32Array(1600), 16000, {
+      todayLocalIso: "2026-10-10",
+      transcribe: async () => "makan bakso 15 ribu",
+      interpret: async () =>
+        JSON.stringify({ category: "food", item: null, merchant: null, date: null }),
+      rulesOnly: false,
+    });
+    expect(out.prediction.item).toBe("Bakso");
   });
 
   test("non-mono buffer is rejected", async () => {

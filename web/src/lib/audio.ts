@@ -1,14 +1,28 @@
+import type { CaptureProgressSnapshot } from "./captureProgress";
+import {
+  createCaptureTimingTracker,
+  type CaptureTimingReport,
+} from "./captureTiming";
 import { localTodayIso } from "./dates";
 import { resampleMono, transcribeThenExtract } from "./pipeline";
 import type { ExpenseFields } from "./types";
 
-export const SPEECH_RMS = 0.004;
-export const SPEECH_MS = 80;
+/** Min RMS loudness to count as speech (0–1 scale on each PCM frame). Stricter = less room noise. */
+export const SPEECH_RMS = 0.02;
+/** Speech must stay at/above SPEECH_RMS this long before we arm silence detection. */
+export const SPEECH_MS = 120;
+/** After speech started, frames quieter than this accumulate toward auto-stop. */
 export const SILENCE_RMS = 0.0025;
+/** Continuous sub-SILENCE_RMS audio for this long ends capture (user did not tap). */
 export const SILENCE_MS = 2000;
+/** Absolute cap on one take; also ends capture if the worklet runs this long. */
 export const HARD_STOP_MS = 20000;
+/** Shorter clips are rejected (no STT) — avoids accidental tap or noise-only. */
 export const MIN_CLIP_MS = 250;
+/** Whisper input sample rate after resample (Hz). */
 export const TARGET_RATE = 16000;
+
+export type CaptureEndReason = "user" | "silence" | "max_duration";
 
 const WORKLET = `
 class PcmCapture extends AudioWorkletProcessor {
@@ -30,6 +44,7 @@ export type TalkOk = {
   transcript: string;
   prediction: ExpenseFields;
   clipUrl: string;
+  timing?: CaptureTimingReport;
 };
 
 function pcmToWavBlob(pcm: Float32Array, sampleRate: number): Blob {
@@ -89,15 +104,41 @@ function fail(reason: TalkFail["reason"], message: string): TalkFail {
   return { ok: false, reason, message };
 }
 
+/** Coalesce multiple end signals into one reason (first wins). */
+export function createCaptureEndGate() {
+  let ended = false;
+  let reason: CaptureEndReason = "user";
+  return {
+    requestEnd(next: CaptureEndReason): boolean {
+      if (ended) return false;
+      ended = true;
+      reason = next;
+      return true;
+    },
+    getReason(): CaptureEndReason {
+      return reason;
+    },
+    isEnded(): boolean {
+      return ended;
+    },
+  };
+}
+
 export function startPushToTalk(opts: {
   onProgress?: (loaded: number, total?: number) => void;
+  onCaptureStage?: (snap: CaptureProgressSnapshot) => void;
   onLevel?: (rms: number) => void;
-}): { stop: () => Promise<TalkResult> } {
-  let stopped = false;
+  onCaptureEnd?: (reason: CaptureEndReason) => void;
+}): { stop: () => void; finished: Promise<TalkResult> } {
+  const endGate = createCaptureEndGate();
   let resolveStop = (): void => {};
   const stoppedP = new Promise<void>((r) => {
     resolveStop = r;
   });
+
+  const requestEnd = (next: CaptureEndReason) => {
+    if (endGate.requestEnd(next)) resolveStop();
+  };
 
   let resolveReady = (): void => {};
   const readyP = new Promise<void>((r) => {
@@ -105,11 +146,12 @@ export function startPushToTalk(opts: {
   });
   let setupError: TalkResult | null = null;
 
-  const run = (async (): Promise<TalkResult> => {
+  const finished = (async (): Promise<TalkResult> => {
     let stream: MediaStream | undefined;
     let ctx: AudioContext | undefined;
     let url: string | undefined;
     let hardTimer: ReturnType<typeof setTimeout> | undefined;
+    let stopped = false;
     try {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -139,15 +181,15 @@ export function startPushToTalk(opts: {
       let speechMs = 0;
       let silenceMs = 0;
       let speechStarted = false;
+      const timing = createCaptureTimingTracker();
+      timing.recordingStart();
       const t0 = performance.now();
-      let autoStop = false;
       hardTimer = setTimeout(() => {
-        autoStop = true;
-        resolveStop();
+        requestEnd("max_duration");
       }, HARD_STOP_MS);
 
       node.port.onmessage = (ev: MessageEvent<Float32Array>) => {
-        if (stopped || autoStop) return;
+        if (stopped || endGate.isEnded()) return;
         const frame = ev.data instanceof Float32Array ? ev.data : new Float32Array(ev.data);
         chunks.push(frame);
         const frameMs = (frame.length / captureRate) * 1000;
@@ -159,12 +201,11 @@ export function startPushToTalk(opts: {
           if (speechMs >= SPEECH_MS) speechStarted = true;
         } else if (level < SILENCE_RMS) {
           silenceMs += frameMs;
-          if (silenceMs >= SILENCE_MS) autoStop = true;
+          if (silenceMs >= SILENCE_MS) requestEnd("silence");
         } else {
           silenceMs = 0;
         }
-        if (performance.now() - t0 >= HARD_STOP_MS) autoStop = true;
-        if (autoStop) resolveStop();
+        if (performance.now() - t0 >= HARD_STOP_MS) requestEnd("max_duration");
       };
 
       resolveReady();
@@ -180,6 +221,9 @@ export function startPushToTalk(opts: {
       ctx = undefined;
       url = undefined;
 
+      timing.recordingEnd();
+      opts.onCaptureEnd?.(endGate.getReason());
+
       const pcm = concat(chunks);
       const durationMs = (pcm.length / captureRate) * 1000;
       if (durationMs < MIN_CLIP_MS) {
@@ -190,11 +234,16 @@ export function startPushToTalk(opts: {
         const out = await transcribeThenExtract(resampled, TARGET_RATE, {
           todayLocalIso: localTodayIso(),
           onProgress: opts.onProgress,
+          onCaptureStage: (snap) => {
+            timing.onStage(snap.stage);
+            opts.onCaptureStage?.(snap);
+          },
         });
         return {
           ok: true,
           ...out,
           clipUrl: URL.createObjectURL(pcmToWavBlob(resampled, TARGET_RATE)),
+          timing: timing.finish(),
         };
       } catch (err) {
         return fail("error", err instanceof Error ? err.message : "Transcription failed.");
@@ -212,11 +261,12 @@ export function startPushToTalk(opts: {
   })();
 
   return {
-    stop: async () => {
-      await readyP;
-      if (setupError) return setupError;
-      resolveStop();
-      return run;
+    stop: () => {
+      void readyP.then(() => {
+        if (setupError) return;
+        requestEnd("user");
+      });
     },
+    finished,
   };
 }

@@ -19,7 +19,9 @@ function stubAsr() {
 
 function stubGen() {
   return Object.assign(
-    vi.fn(async () => [{ generated_text: '{"category":"food","merchant":null,"date":null}' }]),
+    vi.fn(async () => [
+      { generated_text: '{"category":"food","item":null,"merchant":null,"date":null}' },
+    ]),
     { dispose: vi.fn() },
   );
 }

@@ -1,0 +1,79 @@
+# Deploy pasak-server and/or pasak-web to Railway.
+# Requires repo secrets: RAILWAY_TOKEN, RAILWAY_SERVICE_ID_SERVER, RAILWAY_SERVICE_ID_WEB.
+# Web build env (e.g. VITE_MANIFEST_URL) belongs on the Railway web service, not in this workflow.
+
+name: Deploy Railway
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: What to deploy
+        required: true
+        type: choice
+        options:
+          - all
+          - server
+          - web
+  push:
+    tags:
+      - "server-v*"
+      - "web-v*"
+      - "release-v*"
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_server: ${{ steps.plan.outputs.deploy_server }}
+      deploy_web: ${{ steps.plan.outputs.deploy_web }}
+    steps:
+      - id: plan
+        run: |
+          deploy_server=false
+          deploy_web=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            case "${{ inputs.component }}" in
+              all)    deploy_server=true; deploy_web=true ;;
+              server) deploy_server=true ;;
+              web)    deploy_web=true ;;
+            esac
+          else
+            ref="${GITHUB_REF#refs/tags/}"
+            case "$ref" in
+              server-v*)  deploy_server=true ;;
+              web-v*)     deploy_web=true ;;
+              release-v*) deploy_server=true; deploy_web=true ;;
+            esac
+          fi
+          echo "deploy_server=$deploy_server" >> "$GITHUB_OUTPUT"
+          echo "deploy_web=$deploy_web" >> "$GITHUB_OUTPUT"
+
+  deploy-server:
+    needs: resolve
+    if: needs.resolve.outputs.deploy_server == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy server to Railway
+        uses: bervProject/railway-deploy@v1.2.0
+        with:
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          service: ${{ secrets.RAILWAY_SERVICE_ID_SERVER }}
+          directory: server
+
+  deploy-web:
+    needs: resolve
+    if: needs.resolve.outputs.deploy_web == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      # Railway builds web/Dockerfile; set build arg VITE_MANIFEST_URL on the web service.
+      - name: Deploy web to Railway
+        uses: bervProject/railway-deploy@v1.2.0
+        with:
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          service: ${{ secrets.RAILWAY_SERVICE_ID_WEB }}
+          directory: web

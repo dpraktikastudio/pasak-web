@@ -1,5 +1,11 @@
 import { normalizeAmount } from "./amount";
-import { resolveDate } from "./dates";
+import {
+  emitCaptureStage,
+  planCaptureSteps,
+  type CaptureProgressSnapshot,
+  type CaptureStage,
+} from "./captureProgress";
+import { extractItem } from "./item";
 import { completeInterpreter } from "./interpret";
 import { interpreterIsRulesOnly } from "./modelChoice";
 import { transcribePcm } from "./stt";
@@ -13,12 +19,12 @@ const CATEGORIES = new Set<Category>([
   "health",
   "other",
 ]);
-const INTERPRETER_KEYS = ["category", "merchant", "date"];
-const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const INTERPRETER_KEYS = ["category", "item", "merchant", "date"];
 
 export type ExtractOptions = {
   todayLocalIso: string;
   onProgress?: (loaded: number, total?: number) => void;
+  onCaptureStage?: (snap: CaptureProgressSnapshot) => void;
   transcribe?: (
     pcm: Float32Array,
     sampleRate: number,
@@ -32,19 +38,6 @@ export type ExtractOptions = {
 function sameKeys(obj: object, expected: string[]): boolean {
   const keys = Object.keys(obj);
   return keys.length === expected.length && expected.every((k) => keys.includes(k));
-}
-
-function isIsoDate(value: string): boolean {
-  const match = value.match(ISO_DATE_RE);
-  if (!match) return false;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  if (month < 1 || month > 12) return false;
-  const dim = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-  dim[1] = leap ? 29 : 28;
-  return day >= 1 && day <= dim[month - 1];
 }
 
 export function resampleMono(pcm: Float32Array, fromRate: number, toRate: number): Float32Array {
@@ -77,11 +70,19 @@ export function validateInterpreterText(text: string): string | null {
     return "interpreter output must be one JSON object";
   }
   if (!sameKeys(parsed, INTERPRETER_KEYS)) {
-    return "interpreter keys must be exactly category, merchant, date";
+    return "interpreter keys must be exactly category, item, merchant, date";
   }
-  const obj = parsed as { category: unknown; merchant: unknown; date: unknown };
+  const obj = parsed as {
+    category: unknown;
+    item: unknown;
+    merchant: unknown;
+    date: unknown;
+  };
   if (typeof obj.category !== "string" || !CATEGORIES.has(obj.category as Category)) {
     return "category must be food, transport, bills, shopping, health, or other";
+  }
+  if (obj.item !== null && typeof obj.item !== "string") {
+    return "item must be a string or null";
   }
   if (obj.merchant !== null && typeof obj.merchant !== "string") {
     return "merchant must be a string or null";
@@ -94,17 +95,20 @@ export function validateInterpreterText(text: string): string | null {
 
 function parseInterpreter(text: string): {
   category: Category | null;
+  item: string | null;
   merchant: string | null;
   date: string | null;
 } | null {
   if (validateInterpreterText(text)) return null;
   const obj = JSON.parse(text.trim()) as {
     category: Category;
+    item: string | null;
     merchant: string | null;
     date: string | null;
   };
+  const item = obj.item === "" ? null : obj.item;
   const merchant = obj.merchant === "" ? null : obj.merchant;
-  return { category: obj.category, merchant, date: obj.date };
+  return { category: obj.category, item, merchant, date: obj.date };
 }
 
 export async function transcribeThenExtract(
@@ -119,35 +123,46 @@ export async function transcribeThenExtract(
     throw new Error("pcm must be mono");
   }
   const audio = sampleRate === 16000 ? pcm : resampleMono(pcm, sampleRate, 16000);
-  const transcribe = options.transcribe ?? transcribePcm;
-  const transcript = await transcribe(audio, 16000, options.onProgress);
+  const rulesOnly = options.rulesOnly ?? interpreterIsRulesOnly;
+  const planned = planCaptureSteps(rulesOnly);
+  const emit = (stage: CaptureStage) => emitCaptureStage(options.onCaptureStage, planned, stage);
+
+  let transcript: string;
+  if (options.transcribe) {
+    if (planned.includes("transcribing")) emit("transcribing");
+    transcript = await options.transcribe(audio, 16000, options.onProgress);
+  } else {
+    transcript = await transcribePcm(audio, 16000, options.onProgress, emit);
+  }
+
   const money = normalizeAmount(transcript);
-  const resolved = resolveDate(transcript, options.todayLocalIso);
+  const rulesItem = extractItem(transcript);
 
   let category: Category | null = null;
+  let item: string | null = rulesItem;
   let merchant: string | null = null;
-  let interpreterDate: string | null = null;
 
-  const rulesOnly = options.rulesOnly ?? interpreterIsRulesOnly;
   if (!rulesOnly) {
-    const interpret = options.interpret ?? completeInterpreter;
-    let raw = await interpret(transcript);
+    const runInterpret = async (repairError?: string, isRetry = false) => {
+      if (options.interpret) {
+        if (!isRetry && planned.includes("interpreting")) emit("interpreting");
+        return options.interpret(transcript, repairError);
+      }
+      if (isRetry) return completeInterpreter(transcript, repairError);
+      return completeInterpreter(transcript, repairError, { onStage: emit });
+    };
+    let raw = await runInterpret();
     let parsed = parseInterpreter(raw);
     if (!parsed) {
       const err = validateInterpreterText(raw) ?? "invalid json";
-      raw = await interpret(transcript, err);
+      raw = await runInterpret(err, true);
       parsed = parseInterpreter(raw);
     }
     if (parsed) {
       category = parsed.category;
       merchant = parsed.merchant;
-      interpreterDate = parsed.date;
+      item = parsed.item ?? rulesItem;
     }
-  }
-
-  let date = resolved;
-  if (date === null && !rulesOnly && interpreterDate && isIsoDate(interpreterDate)) {
-    date = interpreterDate;
   }
 
   return {
@@ -156,8 +171,9 @@ export async function transcribeThenExtract(
       amount: money.amount,
       currency: money.currency,
       category,
+      item,
       merchant,
-      date,
+      date: options.todayLocalIso,
     },
   };
 }

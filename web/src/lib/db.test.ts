@@ -1,12 +1,22 @@
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, test } from "vitest";
-import { getMeta, listExpenses, openDb, putExpense, putMeta, saveCorrection } from "./db";
+import {
+  clearPasakIndexedDb,
+  getMeta,
+  listExpenses,
+  normalizeExpenseFields,
+  openDb,
+  putExpense,
+  putMeta,
+  saveCorrection,
+} from "./db";
 import type { ExpenseRecord } from "./types";
 
 const fields = {
   amount: 15000,
   currency: "IDR",
   category: "food" as const,
+  item: null,
   merchant: null,
   date: null,
 };
@@ -126,6 +136,26 @@ describe("db", () => {
     });
     db.close();
     expect(row).toEqual({ key: "activeVersions", value: { whisper: null, interpreter: null } });
+    expect(await getMeta("activeVersions")).toEqual({ whisper: null, interpreter: null });
+  });
+
+  test("normalizeExpenseFields fills missing item", () => {
+    expect(
+      normalizeExpenseFields({
+        amount: 1,
+        currency: "IDR",
+        category: "food",
+        merchant: null,
+        date: null,
+      }),
+    ).toMatchObject({ item: null });
+  });
+
+  test("clearPasakIndexedDb wipes expenses but keeps meta", async () => {
+    await putExpense(rec("x", "2026-01-01T00:00:00.000Z", {}));
+    await putMeta("activeVersions", { whisper: null, interpreter: null });
+    await clearPasakIndexedDb();
+    expect(await listExpenses()).toEqual([]);
     expect(await getMeta("activeVersions")).toEqual({ whisper: null, interpreter: null });
   });
 
