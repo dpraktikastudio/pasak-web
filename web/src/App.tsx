@@ -11,7 +11,12 @@ import {
 } from "./lib/consent";
 import { CaptureTimeSpent } from "./components/CaptureTimeSpent";
 import { HistoryExpenseDetail } from "./components/HistoryExpenseDetail";
-import { listExpenses, PASAK_DATA_CLEARED_EVENT, putExpense, updateExpense } from "./lib/db";
+import {
+  listExpenses,
+  PASAK_DATA_CLEARED_EVENT,
+  putExpense,
+  updateExpense,
+} from "./lib/db";
 import { createAutoSaveScheduler } from "./lib/reviewAutoSave";
 import { localTodayIso } from "./lib/dates";
 import type { CaptureProgressSnapshot } from "./lib/captureProgress";
@@ -41,7 +46,10 @@ function fieldsEqual(a: ExpenseFields, b: ExpenseFields): boolean {
   );
 }
 
-function displayDate(stored: string | null, today: string): { value: string; unconfirmed: boolean } {
+function displayDate(
+  stored: string | null,
+  today: string
+): { value: string; unconfirmed: boolean } {
   if (stored) return { value: stored, unconfirmed: false };
   return { value: today, unconfirmed: true };
 }
@@ -69,8 +77,10 @@ export function App() {
   const [rows, setRows] = useState<ExpenseRecord[]>([]);
   const [status, setStatus] = useState("");
   const [holding, setHolding] = useState(false);
-  const [captureProgress, setCaptureProgress] = useState<CaptureProgressSnapshot | null>(null);
-  const [captureTiming, setCaptureTiming] = useState<CaptureTimingReport | null>(null);
+  const [captureProgress, setCaptureProgress] =
+    useState<CaptureProgressSnapshot | null>(null);
+  const [captureTiming, setCaptureTiming] =
+    useState<CaptureTimingReport | null>(null);
   const [draft, setDraft] = useState<ExpenseRecord | null>(null);
   const [saving, setSaving] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -118,7 +128,8 @@ export function App() {
       void isConsentGranted().then(setConsentGranted);
     };
     window.addEventListener(PASAK_DATA_CLEARED_EVENT, onDataCleared);
-    return () => window.removeEventListener(PASAK_DATA_CLEARED_EVENT, onDataCleared);
+    return () =>
+      window.removeEventListener(PASAK_DATA_CLEARED_EVENT, onDataCleared);
   }, []);
 
   useEffect(() => {
@@ -127,7 +138,8 @@ export function App() {
     };
   }, [clipUrl]);
 
-  const amountOk = form.amount !== null && Number.isInteger(form.amount) && form.amount >= 0;
+  const amountOk =
+    form.amount !== null && Number.isInteger(form.amount) && form.amount >= 0;
   const currencyOk = Boolean(form.currency && form.currency.trim());
   const canSave = amountOk && currencyOk && !saving && draft !== null;
 
@@ -218,7 +230,10 @@ export function App() {
     };
   }
 
-  async function applyCaptureSuccess(result: TalkResult & { ok: true }, generation: number) {
+  async function applyCaptureSuccess(
+    result: TalkResult & { ok: true },
+    generation: number
+  ) {
     if (generation !== captureGeneration.current) return;
     const next: ExpenseRecord = {
       id: crypto.randomUUID(),
@@ -226,7 +241,10 @@ export function App() {
       transcript: result.transcript,
       prediction: result.prediction,
       correction: null,
-      modelVersions: expenseModelVersions(await getActiveVersions(), modelChoice),
+      modelVersions: expenseModelVersions(
+        await getActiveVersions(),
+        modelChoice
+      ),
     };
     setClipUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
@@ -241,7 +259,10 @@ export function App() {
     notifyDeviceStatusRefresh();
   }
 
-  async function finishCapture(promise: Promise<TalkResult>, generation: number) {
+  async function finishCapture(
+    promise: Promise<TalkResult>,
+    generation: number
+  ) {
     try {
       const result = await promise;
       if (generation !== captureGeneration.current) return;
@@ -271,7 +292,8 @@ export function App() {
     if (!d || savingRef.current) return;
     const next = formForSaveFromRefs();
     if (!next) return;
-    const amountOk = next.amount !== null && Number.isInteger(next.amount) && next.amount >= 0;
+    const amountOk =
+      next.amount !== null && Number.isInteger(next.amount) && next.amount >= 0;
     const currencyOk = Boolean(next.currency && next.currency.trim());
     if (!amountOk || !currencyOk) return;
 
@@ -388,7 +410,7 @@ export function App() {
 
   async function onHistorySave(
     id: string,
-    patch: { transcript: string; correction: ExpenseFields | null },
+    patch: { transcript: string; correction: ExpenseFields | null }
   ) {
     await updateExpense(id, patch);
     await reload();
@@ -416,8 +438,12 @@ export function App() {
     void saveAndClear();
   }
 
-  const dateUi = displayDate(dateTouched ? form.date : (draft?.prediction.date ?? null), today);
-  const amountErr = draft && !amountOk ? "Amount must be a whole number 0 or greater." : null;
+  const dateUi = displayDate(
+    dateTouched ? form.date : draft?.prediction.date ?? null,
+    today
+  );
+  const amountErr =
+    draft && !amountOk ? "Amount must be a whole number 0 or greater." : null;
   const currencyErr = draft && !currencyOk ? "Currency is required." : null;
 
   const historyFields = rows.map((row) => row.correction ?? row.prediction);
@@ -427,16 +453,18 @@ export function App() {
     <main className="app-shell">
       <header className="app-header">
         <div className="app-header__brand">
-          <h1>pasak-web</h1>
+          <h1>pasak-web (BETA)</h1>
           <p>
-            Tap to record and speak. Tap again to finish early, or pause about 2 seconds when done.
-            Models stay on this device.
+            Tap to record and speak. Tap again to finish early, or pause about 2
+            seconds when done. Models stay on this device.
           </p>
         </div>
         <ThemeToggle />
       </header>
 
-      <DeviceStatusCards actionsLocked={busy || consentBusy || sharingId !== null} />
+      <DeviceStatusCards
+        actionsLocked={busy || consentBusy || sharingId !== null}
+      />
 
       <div className="app-columns">
         <div className="col-capture">
@@ -454,12 +482,21 @@ export function App() {
                 {holding ? "Tap to finish" : "Tap to record"}
               </button>
               {holding ? (
-                <p className="capture-listening" role="status" aria-live="polite">
+                <p
+                  className="capture-listening"
+                  role="status"
+                  aria-live="polite"
+                >
                   Listening…
                 </p>
               ) : null}
               {busy && !holding ? (
-                <div className="transcribe-status" role="status" aria-live="polite" aria-busy="true">
+                <div
+                  className="transcribe-status"
+                  role="status"
+                  aria-live="polite"
+                  aria-busy="true"
+                >
                   <p className="transcribe-status__row">
                     <span className="spinner" aria-hidden />
                     <span>{captureProgress?.label ?? "Processing…"}</span>
@@ -504,13 +541,17 @@ export function App() {
                   <audio controls src={clipUrl} />
                 </label>
               ) : (
-                <p className="empty-hint">No clip in memory. Record again to hear what Whisper got.</p>
+                <p className="empty-hint">
+                  No clip in memory. Record again to hear what Whisper got.
+                </p>
               )}
               <label>
                 Transcript
                 <textarea
                   value={draft.transcript}
-                  onChange={(e) => setDraft({ ...draft, transcript: e.target.value })}
+                  onChange={(e) =>
+                    setDraft({ ...draft, transcript: e.target.value })
+                  }
                 />
               </label>
               <label>
@@ -526,13 +567,17 @@ export function App() {
               </label>
               {amountErr ? <p role="alert">{amountErr}</p> : null}
               {form.amount !== null && currencyOk ? (
-                <p className="progress-line">{formatMoney(form.amount, form.currency)}</p>
+                <p className="progress-line">
+                  {formatMoney(form.amount, form.currency)}
+                </p>
               ) : null}
               <label>
                 Currency
                 <input
                   value={form.currency ?? ""}
-                  onChange={(e) => setForm({ ...form, currency: e.target.value || null })}
+                  onChange={(e) =>
+                    setForm({ ...form, currency: e.target.value || null })
+                  }
                 />
               </label>
               {currencyErr ? <p role="alert">{currencyErr}</p> : null}
@@ -540,7 +585,9 @@ export function App() {
                 Item
                 <input
                   value={form.item ?? ""}
-                  onChange={(e) => setForm({ ...form, item: e.target.value || null })}
+                  onChange={(e) =>
+                    setForm({ ...form, item: e.target.value || null })
+                  }
                 />
               </label>
               <label>
@@ -554,14 +601,22 @@ export function App() {
                   }}
                 />
               </label>
-              {captureTiming ? <CaptureTimeSpent report={captureTiming} /> : null}
-              <button type="button" disabled={!canSave} onClick={() => onSaveNow()}>
+              {captureTiming ? (
+                <CaptureTimeSpent report={captureTiming} />
+              ) : null}
+              <button
+                type="button"
+                disabled={!canSave}
+                onClick={() => onSaveNow()}
+              >
                 Save now
               </button>
             </section>
           ) : (
             <section className="panel">
-              <p className="empty-hint">Record a expense to review transcript and fields here.</p>
+              <p className="empty-hint">
+                Record a expense to review transcript and fields here.
+              </p>
             </section>
           )}
         </div>
@@ -581,8 +636,12 @@ export function App() {
             ) : (
               <>
                 <div className="history-analytics">
-                  <p className="history-analytics__label">Total expenses (IDR)</p>
-                  <p className="history-analytics__value">{formatMoney(totalIdr, "IDR")}</p>
+                  <p className="history-analytics__label">
+                    Total expenses (IDR)
+                  </p>
+                  <p className="history-analytics__value">
+                    {formatMoney(totalIdr, "IDR")}
+                  </p>
                 </div>
                 <div className="expenses-table-wrap">
                   <table className="expenses-table">
@@ -601,7 +660,9 @@ export function App() {
                         return (
                           <Fragment key={row.id}>
                             <tr
-                              className={`expenses-table__row${isOpen ? " expenses-table__row--open" : ""}`}
+                              className={`expenses-table__row${
+                                isOpen ? " expenses-table__row--open" : ""
+                              }`}
                               tabIndex={0}
                               role="button"
                               aria-expanded={isOpen}
@@ -613,7 +674,9 @@ export function App() {
                                 }
                               }}
                             >
-                              <td className="amount-cell">{formatMoney(shown.amount, shown.currency)}</td>
+                              <td className="amount-cell">
+                                {formatMoney(shown.amount, shown.currency)}
+                              </td>
                               <td>{shown.item ?? "—"}</td>
                               <td className="expenses-table__date-cell">
                                 <span className="expenses-table__date-text">
@@ -657,7 +720,10 @@ export function App() {
                               </td>
                             </tr>
                             {isOpen ? (
-                              <tr key={`${row.id}-detail`} className="expenses-table__detail">
+                              <tr
+                                key={`${row.id}-detail`}
+                                className="expenses-table__detail"
+                              >
                                 <td colSpan={3}>
                                   <div className="expenses-table__detail-inner">
                                     <HistoryExpenseDetail
@@ -665,8 +731,12 @@ export function App() {
                                       consentGranted={consentGranted}
                                       consentBusy={consentBusy}
                                       shareBusy={sharingId === row.id}
-                                      onSave={(patch) => onHistorySave(row.id, patch)}
-                                      onShare={(record) => onShareExpense(record)}
+                                      onSave={(patch) =>
+                                        onHistorySave(row.id, patch)
+                                      }
+                                      onShare={(record) =>
+                                        onShareExpense(record)
+                                      }
                                     />
                                   </div>
                                 </td>
@@ -678,7 +748,9 @@ export function App() {
                     </tbody>
                   </table>
                 </div>
-                <p className="progress-line">* date unconfirmed (defaults to today)</p>
+                <p className="progress-line">
+                  * date unconfirmed (defaults to today)
+                </p>
               </>
             )}
           </section>
