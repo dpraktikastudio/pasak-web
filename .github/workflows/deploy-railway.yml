@@ -57,12 +57,14 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+      - name: Install Railway CLI
+        run: curl -fsSL https://railway.com/install.sh | sh
       - name: Deploy server to Railway
-        uses: bervProject/railway-deploy@main
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        with:
-          service: ${{ secrets.RAILWAY_SERVICE_ID_SERVER }}
+        run: |
+          export PATH="/home/runner/.railway/bin:$PATH"
+          railway up --service ${{ secrets.RAILWAY_SERVICE_ID_SERVER }}
 
   deploy-web:
     needs: resolve
@@ -71,9 +73,11 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+      - name: Install Railway CLI
+        run: curl -fsSL https://railway.com/install.sh | sh
       - name: Deploy web to Railway
-        uses: bervProject/railway-deploy@main
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        with:
-          service: ${{ secrets.RAILWAY_SERVICE_ID_WEB }}
+        run: |
+          export PATH="/home/runner/.railway/bin:$PATH"
+          railway up --service ${{ secrets.RAILWAY_SERVICE_ID_WEB }}
