@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { listExpenses, putExpense } from "./db";
 import {
   buildExampleBody,
+  canShareExpense,
   canSync,
   getInstallId,
   optIn,
   revokeConsent,
-  syncCorrection,
+  shareExpense,
+  shareFingerprint,
 } from "./consent";
 import type { ExpenseRecord } from "./types";
 
@@ -29,7 +31,7 @@ function record(extra?: Partial<ExpenseRecord>): ExpenseRecord {
     createdAt: "2026-10-10T10:00:00.000Z",
     transcript: "beli kopi lima belas ribu",
     prediction: { ...fields, category: null, date: null },
-    correction: { ...fields },
+    correction: null,
     modelVersions: { stt: "whisper@1.0.1", interpreter: null },
     ...extra,
   };
@@ -61,7 +63,7 @@ describe("installId", () => {
   });
 
   test("after revoke, installId is unchanged and expenses are still listed", async () => {
-    await putExpense(record());
+    await putExpense(record({ correction: { ...fields } }));
     const before = await getInstallId();
     const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
@@ -73,21 +75,44 @@ describe("installId", () => {
     expect(await getInstallId()).toBe(before);
     expect(await listExpenses()).toHaveLength(1);
   });
+
+  test("revoke clears share metadata on expenses", async () => {
+    await putExpense(
+      record({
+        correction: { ...fields },
+        lastSharedAt: "2026-10-10T12:00:00.000Z",
+        sharedExampleId: "ex-1",
+        sharedFingerprint: "fp",
+      }),
+    );
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await optIn();
+    await revokeConsent();
+    const row = (await listExpenses())[0];
+    expect(row.lastSharedAt).toBeNull();
+    expect(row.sharedExampleId).toBeNull();
+    expect(row.sharedFingerprint).toBeNull();
+  });
 });
 
 describe("buildExampleBody", () => {
-  test("keys are exactly the six names and JSON has no audio, blob, or base64", async () => {
+  test("includes expenseId and builds correction from prediction when correction is null", async () => {
     await getInstallId();
     const body = await buildExampleBody(record());
     expect(Object.keys(body).sort()).toEqual([
       "consentVersion",
       "correction",
+      "expenseId",
       "installId",
       "modelVersions",
       "prediction",
       "transcript",
     ]);
+    expect(body.expenseId).toBe("rec-1");
     expect(body.consentVersion).toBe("1");
+    expect(body.correction.amount).toBe(15000);
+    expect(body.correction.currency).toBe("IDR");
     const json = JSON.stringify(body);
     expect(json).not.toMatch(/audio/i);
     expect(json).not.toMatch(/blob/i);
@@ -95,21 +120,38 @@ describe("buildExampleBody", () => {
   });
 });
 
-describe("canSync", () => {
-  test("false when correction is null", () => {
-    expect(canSync(record({ correction: null }), true)).toBe(false);
+describe("canShareExpense", () => {
+  test("false when amount or currency missing on shown fields", () => {
+    expect(
+      canShareExpense(
+        record({ prediction: { ...fields, amount: null, currency: null }, correction: null }),
+        true,
+      ),
+    ).toBe(false);
   });
 
   test("false when consentGranted is false", () => {
-    expect(canSync(record(), false)).toBe(false);
+    expect(canShareExpense(record(), false)).toBe(false);
   });
 
-  test("true when correction is set and consentGranted is true", () => {
-    expect(canSync(record(), true)).toBe(true);
+  test("true when valid shown fields and consentGranted", () => {
+    expect(canShareExpense(record(), true)).toBe(true);
+  });
+
+  test("canSync alias matches canShareExpense", () => {
+    expect(canSync(record(), true)).toBe(canShareExpense(record(), true));
   });
 });
 
-describe("opt-in and sync", () => {
+describe("shareFingerprint", () => {
+  test("changes when transcript changes", () => {
+    const a = shareFingerprint(record());
+    const b = shareFingerprint(record({ transcript: "other" }));
+    expect(a).not.toBe(b);
+  });
+});
+
+describe("opt-in and share", () => {
   test("opt-in does not call fetch", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -117,7 +159,7 @@ describe("opt-in and sync", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  test("sync is the only path that fetches and posts the six-key example body", async () => {
+  test("share posts example body with expenseId", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response("{}", { status: 200 }))
@@ -125,20 +167,14 @@ describe("opt-in and sync", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await optIn();
-    await syncCorrection(record());
+    const result = await shareExpense(record());
+    expect(result.error).toBeUndefined();
+    expect(result.id).toBe("ex-1");
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[0][0]).toBe(`${ORIGIN}/v1/consent`);
     expect(fetchMock.mock.calls[1][0]).toBe(`${ORIGIN}/v1/examples`);
 
     const exampleBody = JSON.parse(fetchMock.mock.calls[1][1].body as string);
-    expect(Object.keys(exampleBody).sort()).toEqual([
-      "consentVersion",
-      "correction",
-      "installId",
-      "modelVersions",
-      "prediction",
-      "transcript",
-    ]);
+    expect(exampleBody.expenseId).toBe("rec-1");
   });
 });

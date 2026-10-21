@@ -426,7 +426,38 @@ def test_post_example_sixteen_digit_run_redacted(client, db):
     assert "1234567890123456" not in row[0]
 
 
-def test_post_example_duplicate_posts_two_rows(client, db):
+def test_post_example_upsert_same_expense_id(client, db):
+    install_id = str(uuid.uuid4())
+    expense_id = str(uuid.uuid4())
+    assert _grant(client, install_id).status_code == 200
+    body = _sample_example_body(install_id)
+    body["expenseId"] = expense_id
+    first = _post_example(client, body)
+    body["transcript"] = "updated transcript"
+    body["correction"] = {**body["correction"], "item": "Updated"}
+    second = _post_example(client, body)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["id"] == second.json()["id"]
+    assert _example_count(db) == 1
+    row = _fetch_example(db, first.json()["id"])
+    assert row[0] == "updated transcript"
+    assert row[2]["item"] == "Updated"
+
+
+def test_post_example_two_different_expense_ids(client, db):
+    install_id = str(uuid.uuid4())
+    assert _grant(client, install_id).status_code == 200
+    body_a = _sample_example_body(install_id)
+    body_a["expenseId"] = str(uuid.uuid4())
+    body_b = _sample_example_body(install_id)
+    body_b["expenseId"] = str(uuid.uuid4())
+    assert _post_example(client, body_a).status_code == 200
+    assert _post_example(client, body_b).status_code == 200
+    assert _example_count(db) == 2
+
+
+def test_post_example_legacy_duplicate_without_expense_id(client, db):
     install_id = str(uuid.uuid4())
     assert _grant(client, install_id).status_code == 200
     body = _sample_example_body(install_id)

@@ -1,25 +1,26 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useTheme, type ThemePreference } from "./hooks/useTheme";
 import { startPushToTalk, type TalkResult } from "./lib/audio";
-import { canSync, isConsentGranted, optIn, revokeConsent, syncCorrection } from "./lib/consent";
-import { listExpenses, PASAK_DATA_CLEARED_EVENT, putExpense } from "./lib/db";
+import {
+  isConsentGranted,
+  needsShareUpdate,
+  optIn,
+  revokeConsent,
+  shareExpense,
+  shareFingerprint,
+} from "./lib/consent";
+import { HistoryExpenseDetail } from "./components/HistoryExpenseDetail";
+import { listExpenses, PASAK_DATA_CLEARED_EVENT, putExpense, updateExpense } from "./lib/db";
 import { createAutoSaveScheduler } from "./lib/reviewAutoSave";
 import { localTodayIso } from "./lib/dates";
 import type { CaptureProgressSnapshot } from "./lib/captureProgress";
 import { DeviceStatusCards } from "./components/DeviceStatusCards";
+import { TrainingSharingPanel } from "./components/TrainingSharingPanel";
 import { modelChoice } from "./lib/modelChoice";
 import { notifyDeviceStatusRefresh } from "./lib/modelStatus";
 import { formatMoney, sumIdrExpenses } from "./lib/formatMoney";
 import { expenseModelVersions, getActiveVersions } from "./lib/updates";
 import type { ExpenseFields, ExpenseRecord } from "./lib/types";
-
-/** Shown in expand detail; category/merchant stay in data model but hidden in UI (Option A). */
-const DETAIL_FIELD_KEYS: (keyof ExpenseFields)[] = [
-  "amount",
-  "currency",
-  "item",
-  "date",
-];
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: "system", label: "System" },
@@ -41,12 +42,6 @@ function fieldsEqual(a: ExpenseFields, b: ExpenseFields): boolean {
 function displayDate(stored: string | null, today: string): { value: string; unconfirmed: boolean } {
   if (stored) return { value: stored, unconfirmed: false };
   return { value: today, unconfirmed: true };
-}
-
-function showField(key: keyof ExpenseFields, value: string | number | null, currency: string | null): string {
-  if (value === null) return "—";
-  if (key === "amount" && typeof value === "number") return formatMoney(value, currency);
-  return String(value);
 }
 
 function ThemeToggle() {
@@ -88,6 +83,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [consentGranted, setConsentGranted] = useState(false);
   const [consentBusy, setConsentBusy] = useState(false);
+  const [sharingId, setSharingId] = useState<string | null>(null);
   const [clipUrl, setClipUrl] = useState<string | null>(null);
   const session = useRef<ReturnType<typeof startPushToTalk> | null>(null);
   const captureGeneration = useRef(0);
@@ -344,30 +340,50 @@ export function App() {
     return () => cancelAutoSave();
   }, [draft, form, dateTouched, draft?.transcript]);
 
-  async function onOptIn() {
+  async function onOptIn(): Promise<boolean> {
     setConsentBusy(true);
     try {
       await optIn();
       setConsentGranted(true);
       setStatus("");
+      return true;
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Opt-in failed.");
+      return false;
     } finally {
       setConsentBusy(false);
     }
   }
 
-  async function onSyncRow(row: ExpenseRecord) {
-    setConsentBusy(true);
+  async function onShareExpense(row: ExpenseRecord) {
+    setSharingId(row.id);
     try {
-      const result = await syncCorrection(row);
-      if (result.error) setStatus(result.error);
-      else setStatus("");
+      const result = await shareExpense(row);
+      if (result.error) {
+        setStatus(result.error);
+        return;
+      }
+      const fp = shareFingerprint(row);
+      await updateExpense(row.id, {
+        lastSharedAt: new Date().toISOString(),
+        sharedExampleId: result.id ?? row.sharedExampleId ?? null,
+        sharedFingerprint: fp,
+      });
+      await reload();
+      setStatus("");
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Sync failed.");
+      setStatus(err instanceof Error ? err.message : "Share failed.");
     } finally {
-      setConsentBusy(false);
+      setSharingId(null);
     }
+  }
+
+  async function onHistorySave(
+    id: string,
+    patch: { transcript: string; correction: ExpenseFields | null },
+  ) {
+    await updateExpense(id, patch);
+    await reload();
   }
 
   async function onRevoke() {
@@ -378,6 +394,7 @@ export function App() {
       else {
         setConsentGranted(false);
         setStatus("");
+        await reload();
       }
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Revoke failed.");
@@ -411,7 +428,7 @@ export function App() {
         <ThemeToggle />
       </header>
 
-      <DeviceStatusCards actionsLocked={busy || consentBusy} />
+      <DeviceStatusCards actionsLocked={busy || consentBusy || sharingId !== null} />
 
       <div className="app-columns">
         <div className="col-capture">
@@ -532,21 +549,6 @@ export function App() {
               <button type="button" disabled={!canSave} onClick={() => onSaveNow()}>
                 Save now
               </button>
-              <div className="consent-row">
-                <button type="button" disabled={consentBusy} onClick={() => void onOptIn()}>
-                  opt in
-                </button>
-                <button
-                  type="button"
-                  disabled={consentBusy || !canSync(draft, consentGranted)}
-                  onClick={() => void onSyncRow(draft)}
-                >
-                  sync this correction
-                </button>
-                <button type="button" disabled={consentBusy} onClick={() => void onRevoke()}>
-                  revoke
-                </button>
-              </div>
             </section>
           ) : (
             <section className="panel">
@@ -556,6 +558,13 @@ export function App() {
         </div>
 
         <div className="col-history">
+          <TrainingSharingPanel
+            consentGranted={consentGranted}
+            busy={consentBusy}
+            disabled={busy || sharingId !== null}
+            onEnable={() => void onOptIn()}
+            onDisable={() => void onRevoke()}
+          />
           <section className="panel">
             <h2>Past</h2>
             {rows.length === 0 ? (
@@ -597,69 +606,59 @@ export function App() {
                             >
                               <td className="amount-cell">{formatMoney(shown.amount, shown.currency)}</td>
                               <td>{shown.item ?? "—"}</td>
-                              <td>{d.unconfirmed ? `${d.value}*` : d.value}</td>
+                              <td className="expenses-table__date-cell">
+                                <span className="expenses-table__date-text">
+                                  {d.unconfirmed ? `${d.value}*` : d.value}
+                                </span>
+                                {consentGranted && row.lastSharedAt ? (
+                                  <span
+                                    className={`expenses-table__shared-icon${
+                                      needsShareUpdate(row)
+                                        ? " expenses-table__shared-icon--stale"
+                                        : ""
+                                    }`}
+                                    title={
+                                      needsShareUpdate(row)
+                                        ? "Shared; local changes not sent yet"
+                                        : "Shared for training"
+                                    }
+                                    aria-label={
+                                      needsShareUpdate(row)
+                                        ? "Shared, update pending"
+                                        : "Shared for training"
+                                    }
+                                  >
+                                    <svg
+                                      width="14"
+                                      height="14"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      aria-hidden
+                                    >
+                                      <path d="M4 14.9A7 7 0 1 1 15.7 8.3" />
+                                      <path d="M12 12v9" />
+                                      <path d="m16 16-4-4-4 4" />
+                                    </svg>
+                                  </span>
+                                ) : null}
+                              </td>
                             </tr>
                             {isOpen ? (
                               <tr key={`${row.id}-detail`} className="expenses-table__detail">
                                 <td colSpan={3}>
                                   <div className="expenses-table__detail-inner">
-                                    <p className="progress-line">{row.transcript}</p>
-                                    <table>
-                                      <thead>
-                                        <tr>
-                                          <th>field</th>
-                                          <th>prediction</th>
-                                          <th>correction</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {DETAIL_FIELD_KEYS.map((key) => (
-                                          <tr key={key}>
-                                            <td>{key}</td>
-                                            <td>
-                                              {showField(key, row.prediction[key], row.prediction.currency)}
-                                            </td>
-                                            <td>
-                                              {row.correction
-                                                ? showField(key, row.correction[key], row.correction.currency)
-                                                : "—"}
-                                            </td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                    <div className="consent-row">
-                                      <button
-                                        type="button"
-                                        disabled={consentBusy}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          void onOptIn();
-                                        }}
-                                      >
-                                        opt in
-                                      </button>
-                                      <button
-                                        type="button"
-                                        disabled={consentBusy || !canSync(row, consentGranted)}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          void onSyncRow(row);
-                                        }}
-                                      >
-                                        sync this correction
-                                      </button>
-                                      <button
-                                        type="button"
-                                        disabled={consentBusy}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          void onRevoke();
-                                        }}
-                                      >
-                                        revoke
-                                      </button>
-                                    </div>
+                                    <HistoryExpenseDetail
+                                      row={row}
+                                      consentGranted={consentGranted}
+                                      consentBusy={consentBusy}
+                                      shareBusy={sharingId === row.id}
+                                      onSave={(patch) => onHistorySave(row.id, patch)}
+                                      onShare={(record) => onShareExpense(record)}
+                                    />
                                   </div>
                                 </td>
                               </tr>

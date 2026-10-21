@@ -84,6 +84,48 @@ export async function listExpenses(): Promise<ExpenseRecord[]> {
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
 }
 
+export async function updateExpense(
+  id: string,
+  patch: Partial<Omit<ExpenseRecord, "id" | "createdAt">>,
+): Promise<void> {
+  await withDb(
+    (db) =>
+      new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(STORE, "readwrite");
+        const store = tx.objectStore(STORE);
+        const getReq = store.get(id);
+        let missing = false;
+        getReq.onsuccess = () => {
+          const row = getReq.result as ExpenseRecord | undefined;
+          if (!row) {
+            missing = true;
+            return;
+          }
+          const next: ExpenseRecord = normalizeRecord({
+            ...row,
+            ...patch,
+            prediction: patch.prediction
+              ? normalizeExpenseFields(patch.prediction)
+              : row.prediction,
+            correction:
+              patch.correction === undefined
+                ? row.correction
+                : patch.correction === null
+                  ? null
+                  : normalizeExpenseFields(patch.correction),
+          });
+          store.put(next);
+        };
+        getReq.onerror = () => reject(getReq.error);
+        tx.oncomplete = () => {
+          if (missing) reject(new Error(`missing expense: ${id}`));
+          else resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      }),
+  );
+}
+
 export async function saveCorrection(id: string, correction: ExpenseFields | null): Promise<void> {
   await withDb(
     (db) =>
@@ -150,6 +192,39 @@ export function notifyPasakDataCleared(): void {
 }
 
 /** Wipes all expense records. Meta (consent, model versions, install id, etc.) is kept. */
+export async function clearAllExpenseShareMetadata(): Promise<void> {
+  await withDb(
+    (db) =>
+      new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(STORE, "readwrite");
+        const store = tx.objectStore(STORE);
+        const req = store.getAll();
+        req.onsuccess = () => {
+          const rows = req.result as ExpenseRecord[];
+          for (const row of rows) {
+            if (
+              row.lastSharedAt != null ||
+              row.sharedExampleId != null ||
+              row.sharedFingerprint != null
+            ) {
+              store.put(
+                normalizeRecord({
+                  ...row,
+                  lastSharedAt: null,
+                  sharedExampleId: null,
+                  sharedFingerprint: null,
+                }),
+              );
+            }
+          }
+        };
+        req.onerror = () => reject(req.error);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      }),
+  );
+}
+
 export async function clearPasakIndexedDb(): Promise<void> {
   await withDb(
     (db) =>
