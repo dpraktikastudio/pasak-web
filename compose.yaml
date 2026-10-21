@@ -1,0 +1,59 @@
+# Local production-like stack: Postgres + API + static web.
+# Requires repo `models/` on the host for STT spike and/or published whisper versions.
+# Dev-only credentials; do not reuse in production.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: pasak
+      POSTGRES_PASSWORD: pasak
+      POSTGRES_DB: pasak
+    ports:
+      - "5432:5432"
+    volumes:
+      - pasak-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pasak -d pasak"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build:
+      context: ./server
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: "8000"
+      DATABASE_URL: postgresql://pasak:pasak@postgres:5432/pasak
+      MODEL_STORAGE: local
+      MODEL_LOCAL_DIR: /data
+      PUBLIC_MODEL_BASE_URL: http://127.0.0.1:8080
+      CORS_ORIGINS: http://127.0.0.1:8080,http://localhost:8080
+      WEB_ORIGIN: http://127.0.0.1:8080
+      SNAPSHOT_DIR: var/snapshots
+    volumes:
+      - ./models:/data/models
+      - server-var:/app/var
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+      args:
+        VITE_MANIFEST_URL: http://127.0.0.1:8000/v1/manifest
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+    volumes:
+      - ./models:/usr/share/nginx/html/models:ro
+    depends_on:
+      - server
+
+volumes:
+  pasak-pg-data:
+  server-var:

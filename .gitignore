@@ -17,3 +17,5 @@ secret/
 !.env.example
 *.safetensors
 *.onnx
+node_modules/
+web/node_modules/

@@ -19,9 +19,20 @@ Python **3.12** (`requires-python = ">=3.12,<3.13"`). Do not install this packag
 
 Copy `.env.example` to `.env` (gitignored). `uvicorn` and `python -m pasak.admin` load that file on start (`.env` overrides the process env). pytest does not load it. Startup runs SQL in `pasak/migrations/` against `DATABASE_URL` before serving. Logs `startup migrate host:port/db` (no password).
 
+## Docker
+
+API image (migrations on startup, listens on `$PORT`):
+
+```powershell
+docker build -t pasak-server .
+docker run --rm -p 8000:8000 -e DATABASE_URL=... -e MODEL_STORAGE=local -e MODEL_LOCAL_DIR=/data -e PUBLIC_MODEL_BASE_URL=... pasak-server
+```
+
+Full stack (Postgres + API + web) from **repo root**: `docker compose up --build` — see root [`compose.yaml`](../compose.yaml).
+
 ## Postgres
 
-From the **repo root**:
+From the **repo root** (database only):
 
 ```powershell
 docker compose -f server/docker-compose.yml up -d

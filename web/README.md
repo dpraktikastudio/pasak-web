@@ -14,6 +14,17 @@ Weights are **not in git**. They live in repo `models/` (gitignored). Phase 0 `s
 
 `vite dev` does **not** register the service worker. Offline and Phase 2 cache checks use `vite preview`.
 
+## Docker
+
+Production-style static image (nginx, `$PORT` default `8080`):
+
+```powershell
+docker build -t pasak-web --build-arg VITE_MANIFEST_URL=http://127.0.0.1:8000/v1/manifest .
+docker run --rm -p 8080:8080 pasak-web
+```
+
+Weights are not in the image. For local STT, mount repo `models/` at `/usr/share/nginx/html/models` (see root `compose.yaml`). On Railway, set build arg `VITE_MANIFEST_URL` and serve weights from R2 via manifest.
+
 ## Install
 
 From `web/`:
