@@ -1,0 +1,8 @@
+{
+  "stt": "onnx-community/whisper-small",
+  "stt_dir": "models/whisper-small/spike",
+  "stt_dtype": "q8",
+  "interpreter": "qwen3-0.6b",
+  "interpreter_dir": "models/qwen3-0.6b/spike",
+  "interpreter_dtype": "q4f16"
+}

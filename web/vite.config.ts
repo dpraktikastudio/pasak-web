@@ -9,7 +9,6 @@ import { defineConfig, type PreviewServer, type ViteDevServer } from "vite";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(root, "..");
 const modelsDir = path.resolve(repoRoot, "models");
-const decisionsDir = path.resolve(repoRoot, "docs", "decisions");
 
 function sendFile(file: string, res: ServerResponse): boolean {
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return false;
@@ -135,7 +134,7 @@ export default defineConfig({
   },
   server: {
     fs: {
-      allow: [root, modelsDir, decisionsDir],
+      allow: [root, modelsDir],
     },
   },
   test: {

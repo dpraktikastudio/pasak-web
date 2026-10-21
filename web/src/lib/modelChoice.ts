@@ -1,4 +1,7 @@
-import decisionMarkdown from "../../../docs/decisions/phase-0-model-choice.md?raw";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import modelChoiceJson from "../config/model-choice.json";
 
 const REQUIRED = [
   "stt",
@@ -18,12 +21,20 @@ export type ModelChoice = {
   interpreter_dtype: string;
 };
 
-export function parseModelChoice(markdown: string): ModelChoice {
+/** Human decision log (Node-only append, e.g. interpreter thinking fallback). */
+export function phase0DecisionDocPath(): string {
+  return path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../../docs/decisions/phase-0-model-choice.md",
+  );
+}
+
+export function parseModelChoice(input: Record<string, unknown>): ModelChoice {
   const values = new Map<string, string>();
-  for (const line of markdown.split(/\r?\n/)) {
-    const match = line.match(/^([a-z_]+):\s*(.*)$/);
-    if (!match) continue;
-    values.set(match[1], match[2].trim());
+  for (const [key, raw] of Object.entries(input)) {
+    if (raw === null || raw === undefined) continue;
+    if (typeof raw === "string") values.set(key, raw.trim());
+    else if (typeof raw === "number" || typeof raw === "boolean") values.set(key, String(raw));
   }
   for (const key of REQUIRED) {
     if (!values.has(key) || values.get(key) === "") {
@@ -50,7 +61,7 @@ export function dirVersionLabel(dir: string): string {
   return dirModelId(dir).replace("/", "@");
 }
 
-export const modelChoice = parseModelChoice(decisionMarkdown);
+export const modelChoice = parseModelChoice(modelChoiceJson as Record<string, unknown>);
 
 export const sttModelId = dirModelId(modelChoice.stt_dir);
 export const sttVersionLabel = dirVersionLabel(modelChoice.stt_dir);

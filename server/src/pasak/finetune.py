@@ -22,7 +22,7 @@ def repo_root() -> Path:
     return server_dir().parent
 
 
-DECISION_PATH = repo_root() / "docs/decisions/phase-0-model-choice.md"
+MODEL_CHOICE_PATH = repo_root() / "web/src/config/model-choice.json"
 BENCH_SCRIPT = repo_root() / "playground/scripts/bench-finetune.py"
 BENCH_FINETUNE_RESULTS = repo_root() / "playground/results/finetune.json"
 
@@ -44,15 +44,19 @@ QUANT_DATA_SUFFIXES = {
 EXPORT_DTYPES = frozenset({"fp32", "fp16", "bf16"})
 
 
-def parse_decision_file(path: Path) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or ":" not in line:
+def load_model_choice(path: Path) -> dict[str, str]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise FinetuneRefused(f"model choice must be a JSON object: {path}")
+    out: dict[str, str] = {}
+    for key, value in data.items():
+        if value is None:
             continue
-        key, _, value = line.partition(":")
-        values[key.strip()] = value.strip()
-    return values
+        if isinstance(value, str):
+            out[str(key)] = value.strip()
+        elif isinstance(value, (int, float, bool)):
+            out[str(key)] = str(value)
+    return out
 
 
 def count_snapshot_examples(snapshot_dir: Path) -> int:
@@ -71,13 +75,13 @@ def _refuse(message: str) -> None:
 
 
 def validate_finetune(snapshot_dir: Path) -> tuple[str, str, str]:
-    if not DECISION_PATH.is_file():
-        _refuse(f"missing decision file: {DECISION_PATH}")
+    if not MODEL_CHOICE_PATH.is_file():
+        _refuse(f"missing model choice file: {MODEL_CHOICE_PATH}")
 
-    decision = parse_decision_file(DECISION_PATH)
+    decision = load_model_choice(MODEL_CHOICE_PATH)
     interpreter = decision.get("interpreter")
     if not interpreter:
-        _refuse(f"missing interpreter in {DECISION_PATH}")
+        _refuse(f"missing interpreter in {MODEL_CHOICE_PATH}")
     if interpreter == "rules-only":
         _refuse("interpreter is rules-only; fine-tune is refused")
 

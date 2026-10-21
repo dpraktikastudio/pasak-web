@@ -55,14 +55,17 @@ def _write_snapshot_dir(path: Path, line_count: int) -> Path:
     return path
 
 
-def _write_decision(path: Path, interpreter: str = "qwen3-0.6b") -> None:
+def _write_model_choice(path: Path, interpreter: str = "qwen3-0.6b") -> None:
     path.write_text(
-        "\n".join(
-            [
-                "# test decision",
-                f"interpreter: {interpreter}",
-                "interpreter_dtype: q4f16",
-            ]
+        json.dumps(
+            {
+                "stt": "onnx-community/whisper-small",
+                "stt_dir": "models/whisper-small/spike",
+                "stt_dtype": "q8",
+                "interpreter": interpreter,
+                "interpreter_dir": "models/qwen3-0.6b/spike",
+                "interpreter_dtype": "q4f16",
+            }
         ),
         encoding="utf-8",
     )
@@ -71,10 +74,10 @@ def _write_decision(path: Path, interpreter: str = "qwen3-0.6b") -> None:
 def test_finetune_missing_decision_exits_2_and_writes_nothing(
     monkeypatch, tmp_path, capsys
 ):
-    decision = tmp_path / "missing-decision.md"
+    choice = tmp_path / "missing-choice.json"
     snapshot = _write_snapshot_dir(tmp_path / "snap50", 50)
     out = tmp_path / "bundle"
-    monkeypatch.setattr(finetune, "DECISION_PATH", decision)
+    monkeypatch.setattr(finetune, "MODEL_CHOICE_PATH", choice)
     monkeypatch.setattr(finetune, "BENCH_SCRIPT", tmp_path / "bench-finetune.py")
 
     code = finetune_main(["--snapshot", str(snapshot), "--out", str(out)])
@@ -87,11 +90,11 @@ def test_finetune_missing_decision_exits_2_and_writes_nothing(
 
 
 def test_finetune_rules_only_exits_2_and_writes_nothing(monkeypatch, tmp_path):
-    decision = tmp_path / "decision.md"
-    _write_decision(decision, interpreter="rules-only")
+    choice = tmp_path / "choice.json"
+    _write_model_choice(choice, interpreter="rules-only")
     snapshot = _write_snapshot_dir(tmp_path / "snap50", 50)
     out = tmp_path / "bundle"
-    monkeypatch.setattr(finetune, "DECISION_PATH", decision)
+    monkeypatch.setattr(finetune, "MODEL_CHOICE_PATH", choice)
     monkeypatch.setattr(finetune, "BENCH_SCRIPT", tmp_path / "bench-finetune.py")
 
     code = finetune_main(["--snapshot", str(snapshot), "--out", str(out)])
@@ -102,11 +105,11 @@ def test_finetune_rules_only_exits_2_and_writes_nothing(monkeypatch, tmp_path):
 
 
 def test_finetune_fewer_than_50_examples_exits_2(monkeypatch, tmp_path):
-    decision = tmp_path / "decision.md"
-    _write_decision(decision)
+    choice = tmp_path / "choice.json"
+    _write_model_choice(choice)
     snapshot = _write_snapshot_dir(tmp_path / "snap49", 49)
     out = tmp_path / "bundle"
-    monkeypatch.setattr(finetune, "DECISION_PATH", decision)
+    monkeypatch.setattr(finetune, "MODEL_CHOICE_PATH", choice)
     monkeypatch.setattr(finetune, "BENCH_SCRIPT", tmp_path / "bench-finetune.py")
 
     code = finetune_main(["--snapshot", str(snapshot), "--out", str(out)])
@@ -119,11 +122,11 @@ def test_finetune_fewer_than_50_examples_exits_2(monkeypatch, tmp_path):
 def test_finetune_missing_bench_script_exits_2_and_mentions_phase_0(
     monkeypatch, tmp_path, capsys
 ):
-    decision = tmp_path / "decision.md"
-    _write_decision(decision)
+    choice = tmp_path / "choice.json"
+    _write_model_choice(choice)
     snapshot = _write_snapshot_dir(tmp_path / "snap50", 50)
     out = tmp_path / "bundle"
-    monkeypatch.setattr(finetune, "DECISION_PATH", decision)
+    monkeypatch.setattr(finetune, "MODEL_CHOICE_PATH", choice)
     monkeypatch.setattr(finetune, "BENCH_SCRIPT", tmp_path / "no-bench-finetune.py")
 
     code = finetune_main(["--snapshot", str(snapshot), "--out", str(out)])
