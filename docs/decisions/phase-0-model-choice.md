@@ -1,5 +1,7 @@
 # Phase 0 model choice
 
+Runtime bundle (keep in sync when changing shipped models): [`web/src/config/model-choice.json`](../../web/src/config/model-choice.json).
+
 stt: onnx-community/whisper-small
 stt_dir: models/whisper-small/spike
 stt_dtype: q8

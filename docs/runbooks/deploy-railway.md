@@ -49,7 +49,7 @@ Manual deploy without a tag: run the **Deploy Railway** workflow in GitHub (work
 
 1. Create project; add **PostgreSQL**; copy `DATABASE_URL` into server variables.
 2. Create service **pasak-server** — root directory `server`, builder **Dockerfile** (auto-detected).
-3. Create service **pasak-web** — root directory `web`, builder **Dockerfile**. Add build variable `VITE_MANIFEST_URL` for the production API URL.
+3. Create service **pasak-web** — root directory `web`, Dockerfile auto-detected. Add build variable `VITE_MANIFEST_URL` for the production API URL.
 4. Set server `CORS_ORIGINS` and `WEB_ORIGIN` to the final web origin (no trailing slash on base URLs where docs say so).
 5. Configure R2 for model bytes — [model-cdn.md](model-cdn.md). Set `MODEL_STORAGE=r2` and `PUBLIC_MODEL_BASE_URL` to the public CDN origin the browser uses.
 6. In GitHub repo **Settings → Secrets and variables → Actions**:

@@ -1,5 +1,5 @@
 import { env, pipeline } from "@huggingface/transformers";
-import { modelChoice } from "./modelChoice";
+import { modelChoice, phase0DecisionDocPath } from "./modelChoice";
 import {
   configureLocalOnnxEnv,
   withInferenceDeviceFallback,
@@ -81,12 +81,7 @@ async function recordThinkingFallback(): Promise<void> {
   thinkingFallbackNoted = true;
   try {
     const fs = await import("node:fs");
-    const path = await import("node:path");
-    const { fileURLToPath } = await import("node:url");
-    const decision = path.resolve(
-      path.dirname(fileURLToPath(import.meta.url)),
-      "../../../docs/decisions/phase-0-model-choice.md",
-    );
+    const decision = phase0DecisionDocPath();
     const existing = fs.readFileSync(decision, "utf8");
     if (existing.includes("qwen3_thinking_fallback:")) return;
     const prefix = existing.endsWith("\n") ? "" : "\n";
