@@ -12,6 +12,23 @@ const SHELL = PASAK_SHELL_CACHE;
 const MODELS = PASAK_MODELS_FILES_CACHE;
 const BUNDLES = PASAK_MODELS_CACHE;
 
+/** Cached /ort/ responses may have wrong Content-Type from pre-nginx MIME fix. */
+async function withOrtContentType(pathname: string, res: Response): Promise<Response> {
+  const want =
+    pathname.startsWith("/ort/") && pathname.endsWith(".mjs")
+      ? "application/javascript"
+      : pathname.startsWith("/ort/") && pathname.endsWith(".wasm")
+        ? "application/wasm"
+        : null;
+  if (!want) return res;
+  const cur = res.headers.get("Content-Type") ?? "";
+  if (cur.includes("javascript") || cur.includes("wasm")) return res;
+  const headers = new Headers(res.headers);
+  headers.set("Content-Type", want);
+  const body = await res.arrayBuffer();
+  return new Response(body, { status: res.status, statusText: res.statusText, headers });
+}
+
 self.addEventListener("install", (event) => {
   const e = event as Event & { waitUntil: (p: Promise<unknown>) => void };
   e.waitUntil(
@@ -62,10 +79,13 @@ self.addEventListener("fetch", (event) => {
       if (modelsOrOrt) {
         const cache = await caches.open(MODELS);
         const hit = await cache.match(req);
-        if (hit) return hit;
+        if (hit) return withOrtContentType(url.pathname, hit);
         const res = await fetch(req);
-        if (res.status === 200) await cache.put(req, res.clone());
-        return res;
+        if (res.status === 200) {
+          const toStore = await withOrtContentType(url.pathname, res.clone());
+          await cache.put(req, toStore);
+        }
+        return withOrtContentType(url.pathname, res);
       }
 
       if (url.pathname.startsWith("/assets/") || url.pathname === "/sw.js") {

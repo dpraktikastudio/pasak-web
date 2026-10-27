@@ -49,6 +49,9 @@ async function loadPipe(
   assignEnv(delivery);
   const dtype = modelChoice.stt_dtype as "q8" | "q4" | "q4f16";
   const key = `${delivery.modelId}:${dtype}:${device}`;
+  // #region agent log
+  console.log('[DEBUG-634c0c]', JSON.stringify({location:'stt.ts:45',message:'loadPipe called',data:{device,modelId:delivery.modelId,dtype,cached:!!cached,key},timestamp:Date.now(),hypothesisId:'A'}));
+  // #endregion
   if (cached?.key === key) return cached.pipe;
   if (cached) {
     try {
@@ -58,6 +61,9 @@ async function loadPipe(
     }
     cached = null;
   }
+  // #region agent log
+  console.log('[DEBUG-634c0c]', JSON.stringify({location:'stt.ts:61',message:'About to call pipeline()',data:{device,modelId:delivery.modelId,dtype},timestamp:Date.now(),hypothesisId:'A'}));
+  // #endregion
   const pipe = (await pipeline("automatic-speech-recognition", delivery.modelId, {
     dtype,
     device,
@@ -68,6 +74,9 @@ async function loadPipe(
         }
       : undefined,
   })) as unknown as AsrPipe;
+  // #region agent log
+  console.log('[DEBUG-634c0c]', JSON.stringify({location:'stt.ts:73',message:'pipeline() succeeded',data:{device},timestamp:Date.now(),hypothesisId:'A'}));
+  // #endregion
   cached = { key, pipe };
   return pipe;
 }
@@ -89,6 +98,9 @@ export async function transcribePcm(
   onProgress?: (loaded: number, total?: number) => void,
   onStage?: (stage: CaptureStage) => void,
 ): Promise<string> {
+  // #region agent log
+  console.log('[DEBUG-634c0c]', JSON.stringify({location:'stt.ts:95',message:'transcribePcm entry',data:{pcmLength:pcm.length},timestamp:Date.now(),hypothesisId:'A'}));
+  // #endregion
   const active = await getActiveVersions();
   const delivery = deliveryEnvFor("whisper", active.whisper, modelChoice);
   if (delivery.skip) throw new Error("invalid model ID");
