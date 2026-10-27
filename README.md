@@ -78,6 +78,9 @@ cd server; python -m pytest; python -m ruff check src tests
 cd backend; pytest; ruff check src tests
 ```
 
+## Live
+[Webapp](https://pasak-web-production.up.railway.app/)
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
